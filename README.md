@@ -26,6 +26,7 @@ Sử dụng các nút giao diện để thực hiện các chức năng:
 - **Save Progress**: Lưu tiến trình hiện tại
 - **Load Progress**: Tải tiến trình đã lưu
 - **Thanh trượt**: Trượt tới hoặc lui để tăng hoặc giảm độ trong suốt của label
+- **Crtl + lăn chuột**: Phóng to thu nhỏ ảnh
 
 ![Ảnh một tiến trình](https://i.imgur.com/R6mcYlx.png)  
 Object có màu **xanh**: Label có chất lượng tốt  
