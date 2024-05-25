@@ -1,6 +1,6 @@
 # Label Checker
 
-`Label Checker` là một ứng dụng được thiết kế để kiểm tra chất lượng nhãn của dữ liệu ảnh, đặc biệt là ảnh vi khuẩn E. coli.
+`Label Checker` là một ứng dụng được thiết kế để kiểm tra chất lượng nhãn của dữ liệu ảnh, cụ thể là ảnh vi khuẩn E. coli.
 
 ## Tính Năng
 - **Load Ảnh và Nhãn**: Hỗ trợ định dạng file .tiff cho cả ảnh gốc và nhãn.
@@ -14,7 +14,7 @@
 ## Cách Sử Dụng
 
 ### Thao tác bằng nút nhấn trên ứng dụng
-![Ảnh ứng dụng](https://imgur.com/a/4Yd0yEs)
+![Ảnh ứng dụng](https://i.imgur.com/iRbtl0j.png)
 
 Sử dụng các nút giao diện để thực hiện các chức năng:
 - **Load Image**: Tải ảnh và nhãn tương ứng
@@ -27,7 +27,7 @@ Sử dụng các nút giao diện để thực hiện các chức năng:
 - **Load Progress**: Tải tiến trình đã lưu
 - **Thanh trượt**: Trượt tới hoặc lui để tăng hoặc giảm độ trong suốt của label
 
-![Ảnh một tiến trình](https://imgur.com/a/y9Oyx1q)  
+![Ảnh một tiến trình](https://i.imgur.com/R6mcYlx.png)  
 Object có màu **xanh**: Label có chất lượng tốt  
 Object có màu **đỏ**: Label có chất lượng kém  
 Object có màu **trắng**: Chưa được kiểm tra  
