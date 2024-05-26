@@ -17,6 +17,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QListWidget, 
     QListWidgetItem, 
+    QProgressBar,
     QSplitter)
 from PyQt5.QtGui import QPixmap, QFont, QColor
 from PyQt5.QtCore import Qt, QRectF
@@ -91,6 +92,12 @@ class ImageViewer(QWidget):
         self.scene = QGraphicsScene()
         self.view = CustomGraphicsView(self.scene, self)
         leftLayout.addWidget(self.view)
+        
+        self.progressBar = QProgressBar(self)
+        rightLayout.addWidget(self.progressBar)
+        self.progressBar.setMaximum(0)
+        self.progressBar.setValue(0)
+        self.progressBar.setFormat('%p%')
 
         self.objectList = QListWidget(self)
         rightLayout.addWidget(self.objectList)
@@ -220,7 +227,10 @@ class ImageViewer(QWidget):
                     self.objectList.setCurrentRow(self.currentObjectIndex)
                     self.changeMask()
                     
+                    
                     self.colorListItems(rows)
+                    self.loadObjectState(rows)
+                    self.updateProgressBar()
 
                 QMessageBox.information(self, "Success", "File loaded successfully.")
                 self.savedLabel = True
@@ -228,16 +238,23 @@ class ImageViewer(QWidget):
                 QMessageBox.critical(self, "Error", f"Failed to load file: {e}")
         else:
             QMessageBox.warning(self, "Warning", "Load operation cancelled.")
+
+    def loadObjectState(self, rows):
+        self.objectState.clear
+        for row in rows:
+            self.objectState['Number object'].append(row['Number object'])
+            self.objectState['Object State'].append(row['Object State'])
+            self.objectState['Note'].append(row['Note'])
     
     def colorListItems(self, rows):
         for row in rows:
             numberObject = int(float(row['Number object']))
-            currentItem = self.objectList.findItems(f"Object {numberObject}", Qt.MatchExactly)
+            currentItem = self.objectList.findItems(f"Object {(numberObject)}: {self.objectPixelCount[numberObject]} pixels", Qt.MatchExactly)
             if currentItem:
                 if row['Object State'] == "Yes":
-                    currentItem[0].setBackground(Qt.green)
+                    currentItem[0].setBackground(QColor("green"))
                 elif row['Object State'] == "No":
-                    currentItem[0].setBackground(Qt.red)
+                    currentItem[0].setBackground(QColor("Red"))
 
     def getReason(self):
         dialog = QDialog(self)
@@ -272,18 +289,17 @@ class ImageViewer(QWidget):
         reason = ""
         self.insertState("Yes", reason)
         self.updateObjectListColor(self.currentObjectIndex, 'green')
+        self.updateProgressBar()
     
     def markObjectNo(self):
         reason = self.getReason()
         self.insertState("No", reason)
         self.updateObjectListColor(self.currentObjectIndex, 'red')
+        self.updateProgressBar()
 
     def loadImage(self):
         self.imagePath, _ = QFileDialog.getOpenFileName(self, 'Open file', '/home', "Image files (*.tiff *.tif)")
         self.maskPath, _ = QFileDialog.getOpenFileName(self, 'Open file', '/home', "Mask files (*.tiff *.tif)")
-
-        # self.imagePath = "mask12.tiff"
-        # self.maskPath = "bac12.tiff"
         
         self.basePixmap = QPixmap(self.imagePath)
         self.baseItem = QGraphicsPixmapItem(self.basePixmap)
@@ -321,11 +337,15 @@ class ImageViewer(QWidget):
         self.maskArray = np.array(maskImage)
         uniqueObjects = np.unique(self.maskArray)
         self.objects = uniqueObjects
+        self.objects = self.objects[1:]
+        self.objectPixelCount = {obj: np.sum(self.maskArray == obj) for obj in self.objects}
+        self.progressBar.setMaximum(len(self.objects))
 
     def populateObjectList(self):
         self.objectList.clear()
         for obj in self.objects:
-            item = QListWidgetItem(f"Object {int(obj)}")
+            pixel_count = self.objectPixelCount[obj]
+            item = QListWidgetItem(f"Object {int(obj)}: {pixel_count} pixels")
             self.objectList.addItem(item)
         
     def mergeMaskAndImage(self):
@@ -418,6 +438,13 @@ class ImageViewer(QWidget):
         index = self.objectList.row(item)
         self.currentObjectIndex = index
         self.changeMask()
+
+    def updateProgressBar(self):
+        checked_count = len(self.objectState['Object State'])
+        self.progressBar.setValue(checked_count)
+
+        percentage = (checked_count / len(self.objects)) * 100
+        self.progressBar.setFormat(f'{percentage:.2f}% Checked')
 
     def closeEvent(self, event):
         if not self.savedLabel:
