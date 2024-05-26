@@ -14,7 +14,7 @@
 ## Cách Sử Dụng
 
 ### Thao tác bằng nút nhấn trên ứng dụng
-![Ảnh ứng dụng](https://i.imgur.com/iRbtl0j.png)
+![Ảnh ứng dụng](https://i.imgur.com/0ADtRwe.png)
 
 Sử dụng các nút giao diện để thực hiện các chức năng:
 - **Load Image**: Tải ảnh và nhãn tương ứng
@@ -28,7 +28,7 @@ Sử dụng các nút giao diện để thực hiện các chức năng:
 - **Thanh trượt**: Trượt tới hoặc lui để tăng hoặc giảm độ trong suốt của label
 - **Crtl + lăn chuột**: Phóng to thu nhỏ ảnh
 
-![Ảnh một tiến trình](https://i.imgur.com/R6mcYlx.png)  
+![Ảnh một tiến trình](https://i.imgur.com/dO5GXmW.png)  
 Object có màu **xanh**: Label có chất lượng tốt  
 Object có màu **đỏ**: Label có chất lượng kém  
 Object có màu **trắng**: Chưa được kiểm tra  
