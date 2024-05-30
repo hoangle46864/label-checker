@@ -89,6 +89,12 @@ class ImageViewer(QWidget):
         splitter.addWidget(rightWidget)
         splitter.setStretchFactor(0, 4)
 
+        self.labelNameImage = QLabel("")
+        leftLayout.addWidget(self.labelNameImage)
+
+        self.labelNameMask = QLabel("")
+        leftLayout.addWidget(self.labelNameMask)
+
         self.scene = QGraphicsScene()
         self.view = CustomGraphicsView(self.scene, self)
         leftLayout.addWidget(self.view)
@@ -298,28 +304,35 @@ class ImageViewer(QWidget):
         self.updateProgressBar()
 
     def loadImage(self):
-        self.imagePath, _ = QFileDialog.getOpenFileName(self, 'Open file', '/home', "Image files (*.tiff *.tif)")
-        self.maskPath, _ = QFileDialog.getOpenFileName(self, 'Open file', '/home', "Mask files (*.tiff *.tif)")
-        
-        self.basePixmap = QPixmap(self.imagePath)
-        self.baseItem = QGraphicsPixmapItem(self.basePixmap)
-        self.scene.addItem(self.baseItem)
-        self.scene.setSceneRect(self.baseItem.boundingRect())
-        self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio) 
-        
-        self.extractObjects(self.maskPath)
-        self.populateObjectList()
-        
-        self.toggleButton.setDisabled(False)
-        self.btnNext.setDisabled(False)
-        self.btnPre.setDisabled(False)
-        self.btnYes.setDisabled(False)
-        self.btnNo.setDisabled(False)
-        self.btnMerge.setDisabled(False)
-        self.toggleButton.setDisabled(False)
-        self.btnSaveInfo.setDisabled(False)
-        self.btnloadInfo.setDisabled(False)
+        try:
+            self.imagePath, _ = QFileDialog.getOpenFileName(self, 'Open file', '/home', "Image files (*.tiff *.tif)")
+            self.maskPath, _ = QFileDialog.getOpenFileName(self, 'Open file', '/home', "Mask files (*.tiff *.tif)")
             
+            self.basePixmap = QPixmap(self.imagePath)
+            self.baseItem = QGraphicsPixmapItem(self.basePixmap)
+            self.scene.addItem(self.baseItem)
+            self.scene.setSceneRect(self.baseItem.boundingRect())
+            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio) 
+            
+            self.extractObjects(self.maskPath)
+            self.populateObjectList()
+            
+            self.toggleButton.setDisabled(False)
+            self.btnNext.setDisabled(False)
+            self.btnPre.setDisabled(False)
+            self.btnYes.setDisabled(False)
+            self.btnNo.setDisabled(False)
+            self.btnMerge.setDisabled(False)
+            self.toggleButton.setDisabled(False)
+            self.btnSaveInfo.setDisabled(False)
+            self.btnloadInfo.setDisabled(False)
+            
+            self.labelNameImage.setText(self.imagePath)
+            
+            self.labelNameMask.setText(self.maskPath)
+        except:
+            QMessageBox.warning(self, "Warning", "Load operation cancelled.")
+        
     def resizeEvent(self, event):
         if self.scene.items():
             self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
