@@ -18,9 +18,11 @@ from PyQt5.QtWidgets import (
     QListWidget, 
     QListWidgetItem, 
     QProgressBar,
-    QSplitter)
+    QSplitter,
+    QMenuBar,
+    QAction)
 from PyQt5.QtGui import QPixmap, QFont, QColor
-from PyQt5.QtCore import Qt, QRectF
+from PyQt5.QtCore import Qt, QRectF, QEvent
 import sys
 import csv
 import numpy as np
@@ -66,6 +68,11 @@ class CustomGraphicsView(QGraphicsView):
             self.zoomOut()
         else:
             super().keyPressEvent(event)
+            
+    def mousePressEvent(self, event):
+        point = self.mapToScene(event.pos())
+        self.parent.coordinateLabel.setText(f"{int(point.x())}, {int(point.y())}")
+        super(CustomGraphicsView, self).mousePressEvent(event)
 
 class ImageViewer(QWidget):
     def __init__(self):
@@ -153,13 +160,13 @@ class ImageViewer(QWidget):
         rightLayout.addWidget(self.btnloadInfo)
         self.btnloadInfo.setDisabled(True)
 
-        self.objectLabel = QLabel(self)
+        self.coordinateLabel = QLabel(self)
         font = QFont()
         font.setBold(True)
         font.setPointSize(30)
-        self.objectLabel.setFont(font)
-        self.objectLabel.setStyleSheet("color: black;")
-        rightLayout.addWidget(self.objectLabel)
+        self.coordinateLabel.setFont(font)
+        self.coordinateLabel.setStyleSheet("color: black;")
+        rightLayout.addWidget(self.coordinateLabel)
 
         sliderLayout = QHBoxLayout()
         self.sliderLabel = QLabel('Overall label opacity:', self)
@@ -265,31 +272,45 @@ class ImageViewer(QWidget):
     def getReason(self):
         dialog = QDialog(self)
         dialog.setWindowTitle('Note')
-        
+
         textEdit = QTextEdit(dialog)
-        
+
+        textEdit.keyPressEvent = lambda event: self.handleKeyPress(event, dialog, textEdit)
+
         btnBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
         btnBox.accepted.connect(dialog.accept)
         btnBox.rejected.connect(dialog.reject)
-        
+
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Please write reason for reject:"))
         layout.addWidget(textEdit)
         layout.addWidget(btnBox)
-        
+
         dialog.setLayout(layout)
-        
+
         if dialog.exec_() == QDialog.Accepted:
             reason = textEdit.toPlainText()
         else:
             reason = ""
-            
+
         return reason
 
+    def handleKeyPress(self, event, dialog, textEdit):
+        if event.key() in (Qt.Key_Enter, Qt.Key_Return):
+            dialog.accept()
+        else:
+            QTextEdit.keyPressEvent(textEdit, event)
+
     def insertState(self, label, note):
-        self.objectState['Number object'].append(self.objects[self.currentObjectIndex])
-        self.objectState['Object State'].append(label)
-        self.objectState['Note'].append(note)
+        numberObject = self.objects[self.currentObjectIndex]
+        if numberObject in self.objectState['Number object']:
+            index = self.objectState['Number object'].index(numberObject)
+            self.objectState['Object State'][index] = label
+            self.objectState['Note'][index] = note
+        else:
+            self.objectState['Number object'].append(numberObject)
+            self.objectState['Object State'].append(label)
+            self.objectState['Note'].append(note)
 
     def markObjectYes(self):
         reason = ""
@@ -402,14 +423,12 @@ class ImageViewer(QWidget):
 
         self.maskPixmap = QPixmap('output_image.tiff')
         self.maskItem = QGraphicsPixmapItem(self.maskPixmap)
-        self.maskItem.setOpacity(0.5)
-        self.transparencySlider.setValue(50)
+        self.maskItem.setOpacity(self.transparencySlider.value()/100)
 
         self.scene.addItem(self.maskItem)
         self.maskVisible = True
 
         self.scaleToObject(maskClone)
-        self.objectLabel.setText(f"{int(self.objects[self.currentObjectIndex])}")
 
     def previousObject(self):
         if self.currentObjectIndex > 0:
@@ -437,9 +456,13 @@ class ImageViewer(QWidget):
             return
         minRow, maxRow = indices[0].min(), indices[0].max()
         minCol, maxCol = indices[1].min(), indices[1].max()
-        boundingRect = QRectF(minCol, minRow, maxCol - minCol, maxRow - minRow)
+        boundingRect = QRectF((minCol), minRow, (maxCol - minCol), (maxRow - minRow))
         self.view.fitInView(boundingRect, Qt.KeepAspectRatio)
-        self.view.scale(1/2, 1/2)
+        self.view.scale(1/4, 1/4)
+        
+        pointX = (minCol + maxCol)/2
+        pointY = (minRow + maxRow)/2
+        self.coordinateLabel.setText(f"{int(pointX)}, {int(pointY)}")
 
     def updateObjectListColor(self, index, color):
         item = self.objectList.item(index)
