@@ -1,3 +1,4 @@
+import os
 from PyQt5.QtWidgets import (
     QFileDialog,
     QMessageBox,
@@ -18,7 +19,7 @@ from PyQt5.QtWidgets import (
     QProgressBar,
     QSplitter,
 )
-from PyQt5.QtGui import QPixmap, QFont, QColor
+from PyQt5.QtGui import QPixmap, QFont, QColor, QTextCursor
 from PyQt5.QtCore import Qt, QRectF, QThread
 import csv
 import numpy as np
@@ -162,53 +163,62 @@ class ImageViewer(QWidget):
         self.objects = []
         self.objectState = {}
 
-        self.objectState["Number object"] = []
+        self.objectState["Object Number"] = []
         self.objectState["Object State"] = []
         self.objectState["Note"] = []
 
     def loadImage(self):
-        try:
-            self.imagePath, _ = QFileDialog.getOpenFileName(
-                self, "Open file", "/home", "Image files (*.tiff *.tif)"
-            )
-            self.maskPath, _ = QFileDialog.getOpenFileName(
-                self, "Open file", "/home", "Mask files (*.tiff *.tif)"
-            )
+        self.imagePath, _ = QFileDialog.getOpenFileName(
+            self, "Open file", "/home", "Image files (*.tiff *.tif)"
+        )
+        if not self.imagePath:
+            return
+        self.maskPath, _ = QFileDialog.getOpenFileName(
+            self, "Open file", "/home", "Mask files (*.tiff *.tif)"
+        )
+        if not self.maskPath:
+            return
 
+        # Display the base image in the QGraphicsView
+        try:
+            # Initialize the QGraphicsScene
             self.basePixmap = QPixmap(self.imagePath)
             self.baseItem = QGraphicsPixmapItem(self.basePixmap)
             self.scene.addItem(self.baseItem)
             self.scene.setSceneRect(self.baseItem.boundingRect())
             self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
 
-            maskImage = Image.open(self.maskPath)
-            self.maskArray = np.array(maskImage)
-            uniqueObjects = np.unique(self.maskArray)
-            self.objects = uniqueObjects[1:]  # Exclude background
-            self.objectPixelCount = {obj: np.sum(self.maskArray == obj) for obj in self.objects}
-
-            # Initialize progress bar
+            # Initialize loading progress bar
             self.loadingProgressBar.setMaximum(100)
             self.loadingProgressBar.setValue(0)
             self.loadingProgressBar.setVisible(True)
+
+            # Initialize QA progress bar
+            self.qaProgressBar.setMaximum(0)
+            self.qaProgressBar.setValue(0)
+            self.qaProgressBar.setFormat("%p%")
+
+            # Extract objects from the mask
+            self.extractObjects(self.maskPath)
 
             # Create and start the worker thread
             self.thread = QThread()
             self.worker = Worker(self.maskArray, self.objects)
             self.worker.moveToThread(self.thread)
 
+            # Connect signals and slots
             self.thread.started.connect(self.worker.run)
             self.worker.finished.connect(self.thread.quit)
             self.worker.finished.connect(self.worker.deleteLater)
             self.thread.finished.connect(self.thread.deleteLater)
             self.worker.progress.connect(self.updateLoadingProgressBar)
-
             self.thread.finished.connect(self.loadingFinished)
 
+            # Start the worker thread
             self.thread.start()
 
         except Exception as e:
-            QMessageBox.warning(self, "Warning", f"Load operation cancelled: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to load image: {e}")
 
     def updateQAProgressBar(self):
         checked_count = len(self.objectState["Object State"])
@@ -247,8 +257,9 @@ class ImageViewer(QWidget):
         self.maskVisible = True
 
     def saveInfo(self):
+        default_file_name = "progress_" + os.path.splitext(os.path.basename(self.imagePath))[0] + ".csv"
         self.saveFilePath, _ = QFileDialog.getSaveFileName(
-            None, "Save CSV", "", "CSV Files (*.csv);;All Files (*)"
+            None, "Save CSV", default_file_name, "CSV Files (*.csv);;All Files (*)"
         )
 
         if self.saveFilePath:
@@ -264,7 +275,7 @@ class ImageViewer(QWidget):
                     ]
                     rows.append(
                         {
-                            "Number object": self.objects[self.currentObjectIndex],
+                            "Object Number": f"label_{self.objects[self.currentObjectIndex]}",
                             "Object State": "Current index",
                             "Note": "",
                         }
@@ -292,9 +303,8 @@ class ImageViewer(QWidget):
                     last_row = rows[-1]
                     rows = rows[:-1]
 
-                    self.currentObjectIndex = int(float(last_row["Number object"]))
-                    self.objectList.setCurrentRow(self.currentObjectIndex)
-                    self.changeMask()
+                    currentItem = int(last_row["Object Number"].replace("label_", ""))
+                    self.selectObjectById(currentItem)
 
                     self.colorListItems(rows)
                     self.loadObjectState(rows)
@@ -308,15 +318,19 @@ class ImageViewer(QWidget):
             QMessageBox.warning(None, "Warning", "Load operation cancelled.")
 
     def loadObjectState(self, rows):
-        self.objectState.clear()
+        self.objectState = {
+            "Object Number": [],
+            "Object State": [],
+            "Note": []
+        }
         for row in rows:
-            self.objectState["Number object"].append(row["Number object"])
+            self.objectState["Object Number"].append(row["Object Number"])
             self.objectState["Object State"].append(row["Object State"])
             self.objectState["Note"].append(row["Note"])
 
     def colorListItems(self, rows):
         for row in rows:
-            numberObject = int(float(row["Number object"]))
+            numberObject = int(row["Object Number"].replace("label_", ""))
             currentItem = self.objectList.findItems(
                 f"Object {(numberObject)}: {self.objectPixelCount[numberObject]} pixels",
                 Qt.MatchExactly,
@@ -332,6 +346,8 @@ class ImageViewer(QWidget):
         dialog.setWindowTitle("Note")
 
         textEdit = QTextEdit(dialog)
+        textEdit.setPlainText(f"({self.coordinateLabel.text()}) - ")
+        textEdit.moveCursor(QTextCursor.End)
 
         textEdit.keyPressEvent = lambda event: self.handleKeyPress(event, dialog, textEdit)
 
@@ -360,13 +376,14 @@ class ImageViewer(QWidget):
             QTextEdit.keyPressEvent(textEdit, event)
 
     def insertState(self, label, note):
-        numberObject = self.objects[self.currentObjectIndex]
-        if numberObject in self.objectState["Number object"]:
-            index = self.objectState["Number object"].index(numberObject)
+        object_number = self.objects[self.currentObjectIndex]
+        label_object_number = f"label_{object_number}"
+        if label_object_number in self.objectState["Object Number"]:
+            index = self.objectState["Object Number"].index(label_object_number)
             self.objectState["Object State"][index] = label
             self.objectState["Note"][index] = note
         else:
-            self.objectState["Number object"].append(numberObject)
+            self.objectState["Object Number"].append(label_object_number)
             self.objectState["Object State"].append(label)
             self.objectState["Note"].append(note)
 
@@ -482,12 +499,14 @@ class ImageViewer(QWidget):
             self.currentObjectIndex -= 1
         self.objectList.setCurrentRow(self.currentObjectIndex)
         self.changeMask()
+        self.view.drawBoundingBox(self.objects[self.currentObjectIndex])
 
     def nextObject(self):
         if self.currentObjectIndex < len(self.objects) - 1:
             self.currentObjectIndex += 1
         self.objectList.setCurrentRow(self.currentObjectIndex)
         self.changeMask()
+        self.view.drawBoundingBox(self.objects[self.currentObjectIndex])
 
     def updateOpacityValue(self, value):
         self.opacityValue.setText(str(value))
@@ -519,10 +538,18 @@ class ImageViewer(QWidget):
         if item:
             item.setBackground(QColor(color))
 
+    def selectObjectById(self, obj_id):
+        if obj_id in self.objects:
+            index = self.objects.tolist().index(obj_id)
+            self.objectList.setCurrentRow(index)
+            self.onItemClicked(self.objectList.item(index))
+            self.view.drawBoundingBox(obj_id)
+
     def onItemClicked(self, item):
         index = self.objectList.row(item)
         self.currentObjectIndex = index
         self.changeMask()
+        self.view.drawBoundingBox(self.objects[index])
 
     def highlightObjectAtPoint(self, point):
         x, y = int(point.x()), int(point.y())
