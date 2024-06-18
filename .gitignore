@@ -1,0 +1,6 @@
+test_data
+*.tiff
+
+# Cache
+__pycache__
+*.pyc
