@@ -102,6 +102,11 @@ class ImageViewer(QWidget):
         rightLayout.addWidget(self.btnNo)
         self.btnNo.setDisabled(True)
 
+        self.btnNoForNonLabel = QPushButton("No for non-label", self)
+        self.btnNoForNonLabel.clicked.connect(self.noForNonLabel)
+        rightLayout.addWidget(self.btnNoForNonLabel)
+        self.btnNoForNonLabel.setDisabled(True)
+
         self.btnMerge = QPushButton("Merge", self)
         self.btnMerge.clicked.connect(self.mergeMaskAndImage)
         rightLayout.addWidget(self.btnMerge)
@@ -166,6 +171,8 @@ class ImageViewer(QWidget):
         self.objectState["Object Number"] = []
         self.objectState["Object State"] = []
         self.objectState["Note"] = []
+        
+        self.noteNonLabel = []
 
     def loadImage(self):
         self.imagePath, _ = QFileDialog.getOpenFileName(
@@ -250,6 +257,7 @@ class ImageViewer(QWidget):
         self.toggleButton.setDisabled(False)
         self.btnSaveInfo.setDisabled(False)
         self.btnloadInfo.setDisabled(False)
+        self.btnNoForNonLabel.setDisabled(False)
 
         self.labelNameImage.setText(self.imagePath)
         self.labelNameMask.setText(self.maskPath)
@@ -280,6 +288,14 @@ class ImageViewer(QWidget):
                             "Note": "",
                         }
                     )
+                    for note in self.noteNonLabel:
+                        rows.append(
+                            {
+                                "Object Number": None,
+                                "Object State": None,
+                                "Note": note,  
+                            }
+                        )
 
                     writer.writerows(rows)
                 QMessageBox.information(None, "Success", "File saved successfully.")
@@ -300,15 +316,26 @@ class ImageViewer(QWidget):
                     reader = csv.DictReader(file)
                     rows = list(reader)
 
-                    last_row = rows[-1]
-                    rows = rows[:-1]
-
-                    currentItem = int(last_row["Object Number"].replace("label_", ""))
+                    index_to_split = None
+                    for i, row in enumerate(rows):
+                        if row["Object State"] == "Current index":
+                            index_to_split = i
+                            break
+                    
+                    currentItem = int(rows[index_to_split].get("Object Number", "").replace("label_", "").strip())
                     self.selectObjectById(currentItem)
 
-                    self.colorListItems(rows)
-                    self.loadObjectState(rows)
+                    haveLabel = rows[:index_to_split]
+
+                    self.colorListItems(haveLabel)
+                    self.loadObjectState(haveLabel)
                     self.updateQAProgressBar()
+
+                    if index_to_split < len(rows):
+                        self.noteNonLabel.clear()
+                        nonLabel = rows[index_to_split + 1:]
+                        for row in nonLabel:
+                            self.noteNonLabel.append(row["Note"])
 
                 QMessageBox.information(self, "Success", "File loaded successfully.")
                 self.savedLabel = True
@@ -386,6 +413,10 @@ class ImageViewer(QWidget):
             self.objectState["Object Number"].append(label_object_number)
             self.objectState["Object State"].append(label)
             self.objectState["Note"].append(note)
+
+    def noForNonLabel(self):
+        reason = self.getReason()
+        self.noteNonLabel.append(reason)
 
     def markObjectYes(self):
         reason = ""
