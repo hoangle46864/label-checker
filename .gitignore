@@ -1,0 +1,8 @@
+# Data
+test_data
+*.tiff
+*.csv
+
+# Cache
+__pycache__
+*.pyc
