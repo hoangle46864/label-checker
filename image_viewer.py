@@ -1,131 +1,162 @@
-import os
 from PyQt5.QtWidgets import (
-    QFileDialog,
-    QMessageBox,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
+    QFileDialog, 
+    QMessageBox,  
+    QWidget, 
+    QVBoxLayout, 
+    QHBoxLayout, 
     QPushButton,
-    QGraphicsScene,
-    QGraphicsPixmapItem,
-    QDialog,
+    QDialog, 
     QTextEdit,
-    QDialogButtonBox,
-    QLabel,
-    QSlider,
+    QDialogButtonBox, 
+    QLabel, 
+    QSlider, 
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
+    QListWidget, 
+    QListWidgetItem, 
     QProgressBar,
     QSplitter,
-)
-from PyQt5.QtGui import QPixmap, QFont, QColor, QTextCursor
+    QAction,
+    QMainWindow)
+from PyQt5.QtGui import QFont, QColor, QTextCursor
 from PyQt5.QtCore import Qt, QRectF, QThread
 import csv
 import numpy as np
 from PIL import Image
-from custom_graphics_view import CustomGraphicsView
+import os
+import numpy as np
+from image_grid_widget import ImageGridWidget
 from worker import Worker
-
-
-class ImageViewer(QWidget):
+import random
+from edit_hot_key_dialog import EditHotkeysDialog
+             
+class ImageViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.initUI()
 
     def initUI(self):
-        mainLayout = QVBoxLayout()
+        centralWidget = QWidget()
+        self.setCentralWidget(centralWidget)
+        mainLayout = QVBoxLayout(centralWidget)
 
         splitter = QSplitter(Qt.Horizontal)
-
         leftWidget = QWidget()
-        leftLayout = QVBoxLayout()
-        leftWidget.setLayout(leftLayout)
-
+        leftLayout = QVBoxLayout(leftWidget)
         rightWidget = QWidget()
-        rightLayout = QVBoxLayout()
-        rightWidget.setLayout(rightLayout)
-
+        rightLayout = QVBoxLayout(rightWidget)
         splitter.addWidget(leftWidget)
         splitter.addWidget(rightWidget)
         splitter.setStretchFactor(0, 4)
 
-        self.labelNameImage = QLabel("")
+        self.setupMenus()
+        self.setupLeftPanel(leftLayout)
+        self.setupRightPanel(rightLayout)
+
+        mainLayout.addWidget(splitter)
+
+        self.setWindowTitle('Image and Mask Viewer')
+        self.setGeometry(300, 300, 1200, 800)
+        
+        self.setupVariable()
+        self.setupHotKeyDefault()
+        
+        # self.openImage(1)
+        # self.openImage(2)
+        # self.openImage(3)
+        # self.openMask()
+
+    def setupMenus(self):
+        menuBar = self.menuBar()
+        fileMenu = menuBar.addMenu('&File')
+        doubleCheckMenu = menuBar.addMenu('&Double Check')
+        editMenu = menuBar.addMenu('&Edit')
+
+        openImageAction1 = QAction('&Open Image Channel 1', self)
+        openImageAction2 = QAction('&Open Image Channel 2', self)
+        openImageAction3 = QAction('&Open Image Channel 3', self)
+        openMaskAction = QAction('&Open Mask', self)
+        saveProgressAction = QAction('&Save Progress', self)
+        loadProgressAction = QAction('&Load Progress', self)
+
+        fileMenu.addAction(openImageAction1)
+        fileMenu.addAction(openImageAction2)
+        fileMenu.addAction(openImageAction3)
+        fileMenu.addAction(openMaskAction)
+        fileMenu.addSeparator()
+        fileMenu.addAction(saveProgressAction)
+        fileMenu.addAction(loadProgressAction)
+        
+        openImageAction1.triggered.connect(lambda: self.openImage(1))
+        openImageAction2.triggered.connect(lambda: self.openImage(2))
+        openImageAction3.triggered.connect(lambda: self.openImage(3))
+        openMaskAction.triggered.connect(self.openMask)
+        saveProgressAction.triggered.connect(self.saveProgress)
+        loadProgressAction.triggered.connect(self.loadProgress)
+        
+        turnOnDoubleCheckMode = QAction('&On double check Mode', self)
+        saveDoubleCheckAction = QAction('&Save Double Check', self)
+
+        doubleCheckMenu.addAction(turnOnDoubleCheckMode)
+        doubleCheckMenu.addAction(saveDoubleCheckAction)
+        
+        turnOnDoubleCheckMode.setCheckable(True)
+        turnOnDoubleCheckMode.triggered.connect(self.startDoubleCheck)
+        saveDoubleCheckAction.triggered.connect(self.saveDoubleCheckProgress)
+        
+        editHotKeyAction = QAction("&Edit Hot Key", self)
+        
+        editMenu.addAction(editHotKeyAction)
+        
+        editHotKeyAction.triggered.connect(self.editHotKey)
+        
+    def setupLeftPanel(self, leftLayout):
+        self.labelNameImage = QLabel("Image: Not loaded")
         leftLayout.addWidget(self.labelNameImage)
+        
+        self.imageGridWidget = ImageGridWidget(self)
+        self.imageGridWidget.pointTracked.connect(self.updateCoordinates)
+        leftLayout.addWidget(self.imageGridWidget)
 
-        self.labelNameMask = QLabel("")
-        leftLayout.addWidget(self.labelNameMask)
-
-        self.scene = QGraphicsScene()
-        self.view = CustomGraphicsView(self.scene, self)
-        leftLayout.addWidget(self.view)
-
-        # Progress bar for loading and processing
+    def setupRightPanel(self, rightLayout):
         self.loadingProgressBar = QProgressBar(self)
-        rightLayout.addWidget(self.loadingProgressBar)
         self.loadingProgressBar.setMaximum(100)
         self.loadingProgressBar.setValue(0)
-        self.loadingProgressBar.setFormat("%p%")
+        self.loadingProgressBar.setFormat("%p%")     
+        rightLayout.addWidget(self.loadingProgressBar)   
 
-        # QA progress bar
-        self.qaProgressBar = QProgressBar(self)
-        rightLayout.addWidget(self.qaProgressBar)
-        self.qaProgressBar.setMaximum(0)
-        self.qaProgressBar.setValue(0)
-        self.qaProgressBar.setFormat("%p%")
+        self.progressBar = QProgressBar()
+        self.progressBar.setMaximum(0)
+        self.progressBar.setValue(0)
+        self.progressBar.setFormat('%p%')
+        rightLayout.addWidget(self.progressBar)
 
-        self.objectList = QListWidget(self)
+        self.objectList = QListWidget()
         rightLayout.addWidget(self.objectList)
         self.objectList.itemClicked.connect(self.onItemClicked)
 
-        self.btnLoad = QPushButton("Load Image", self)
-        self.btnLoad.clicked.connect(self.loadImage)
-        rightLayout.addWidget(self.btnLoad)
-
-        self.btnNext = QPushButton("Next Object", self)
+        self.btnNext = QPushButton('Next Object')
         self.btnNext.clicked.connect(self.nextObject)
         rightLayout.addWidget(self.btnNext)
-        self.btnNext.setDisabled(True)
 
-        self.btnPre = QPushButton("Previous Object", self)
+        self.btnPre = QPushButton('Previous Object')
         self.btnPre.clicked.connect(self.previousObject)
         rightLayout.addWidget(self.btnPre)
-        self.btnPre.setDisabled(True)
 
-        self.btnYes = QPushButton("Yes", self)
+        self.btnYes = QPushButton('Yes')
         self.btnYes.clicked.connect(self.markObjectYes)
         rightLayout.addWidget(self.btnYes)
-        self.btnYes.setDisabled(True)
 
-        self.btnNo = QPushButton("No", self)
+        self.btnNo = QPushButton('No')
         self.btnNo.clicked.connect(self.markObjectNo)
         rightLayout.addWidget(self.btnNo)
-        self.btnNo.setDisabled(True)
 
         self.btnNoForNonLabel = QPushButton("No for non-label", self)
         self.btnNoForNonLabel.clicked.connect(self.noForNonLabel)
         rightLayout.addWidget(self.btnNoForNonLabel)
-        self.btnNoForNonLabel.setDisabled(True)
-
-        self.btnMerge = QPushButton("Merge", self)
-        self.btnMerge.clicked.connect(self.mergeMaskAndImage)
-        rightLayout.addWidget(self.btnMerge)
-        self.btnMerge.setDisabled(True)
-
-        self.toggleButton = QPushButton("Show/Hide Mask", self)
+        
+        self.toggleButton = QPushButton('Show/Hide Mask', self)
         self.toggleButton.clicked.connect(self.toggleMask)
         rightLayout.addWidget(self.toggleButton)
-        self.toggleButton.setDisabled(True)
-
-        self.btnSaveInfo = QPushButton("Save Progress", self)
-        self.btnSaveInfo.clicked.connect(self.saveInfo)
-        rightLayout.addWidget(self.btnSaveInfo)
-        self.btnSaveInfo.setDisabled(True)
-
-        self.btnloadInfo = QPushButton("Load Progress", self)
-        self.btnloadInfo.clicked.connect(self.loadInfo)
-        rightLayout.addWidget(self.btnloadInfo)
-        self.btnloadInfo.setDisabled(True)
 
         self.coordinateLabel = QLabel(self)
         font = QFont()
@@ -134,15 +165,15 @@ class ImageViewer(QWidget):
         self.coordinateLabel.setFont(font)
         self.coordinateLabel.setStyleSheet("color: black;")
         rightLayout.addWidget(self.coordinateLabel)
-
+        
         sliderLayout = QHBoxLayout()
-        self.sliderLabel = QLabel("Overall label opacity:", self)
-        self.opacityValue = QLineEdit("50", self)
+        self.sliderLabel = QLabel('Overall label opacity:', self)
+        self.opacityValue = QLineEdit('100', self)
         self.opacityValue.setFixedWidth(50)
         self.transparencySlider = QSlider(Qt.Horizontal, self)
         self.transparencySlider.setMinimum(0)
         self.transparencySlider.setMaximum(100)
-        self.transparencySlider.setValue(50)
+        self.transparencySlider.setValue(100)
         self.transparencySlider.setTickPosition(QSlider.TicksBelow)
         self.transparencySlider.setTickInterval(10)
         self.transparencySlider.valueChanged.connect(self.changeTransparency)
@@ -152,221 +183,193 @@ class ImageViewer(QWidget):
         sliderLayout.addWidget(self.opacityValue)
         sliderLayout.addWidget(self.transparencySlider)
         rightLayout.addLayout(sliderLayout)
-
-        mainLayout.addWidget(splitter)
-        self.setLayout(mainLayout)
-
-        self.setWindowTitle("Image and Mask Viewer")
-        self.setGeometry(300, 300, 1200, 800)
-
-        self.show()
-
-        self.imagePath = ""
-        self.maskPath = ""
+        
+    def setupVariable(self):
+        self.channelPath = ['0', '1', '2', '3']
+        self.maskPath = ''
+        self.imageName = ''
+        
+        self.modeDoubleCheck = False
         self.currentObjectIndex = 0
         self.savedLabel = False
         self.objects = []
+        self.objects2 = []
+        
         self.objectState = {}
 
-        self.objectState["Object Number"] = []
-        self.objectState["Object State"] = []
-        self.objectState["Note"] = []
+        self.objectState['Object Number'] = []
+        self.objectState['Object State'] = []
+        self.objectState['Note'] = []
+
+        self.objectStateDoubleCheck = {}
+        
+        self.objectStateDoubleCheck['Object Number'] = []
+        self.objectStateDoubleCheck['Object State 1'] = []
+        self.objectStateDoubleCheck['Object State 2'] = []
+        self.objectStateDoubleCheck['Note'] = []        
         
         self.noteNonLabel = []
+        self.noteNonLabelDoubleCheck = []
 
-    def loadImage(self):
-        self.imagePath, _ = QFileDialog.getOpenFileName(
-            self, "Open file", "/home", "Image files (*.tiff *.tif)"
-        )
-        if not self.imagePath:
-            return
-        self.maskPath, _ = QFileDialog.getOpenFileName(
-            self, "Open file", "/home", "Mask files (*.tiff *.tif)"
-        )
-        if not self.maskPath:
-            return
-
-        # Display the base image in the QGraphicsView
+    def openImage(self, num):
         try:
-            # Initialize the QGraphicsScene
-            self.basePixmap = QPixmap(self.imagePath)
-            self.baseItem = QGraphicsPixmapItem(self.basePixmap)
-            self.scene.addItem(self.baseItem)
-            self.scene.setSceneRect(self.baseItem.boundingRect())
-            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-
-            # Initialize loading progress bar
-            self.loadingProgressBar.setMaximum(100)
-            self.loadingProgressBar.setValue(0)
-            self.loadingProgressBar.setVisible(True)
-
-            # Initialize QA progress bar
-            self.qaProgressBar.setMaximum(0)
-            self.qaProgressBar.setValue(0)
-            self.qaProgressBar.setFormat("%p%")
-
-            # Extract objects from the mask
-            self.extractObjects(self.maskPath)
-
-            # Create and start the worker thread
-            self.thread = QThread()
-            self.worker = Worker(self.maskArray, self.objects)
-            self.worker.moveToThread(self.thread)
-
-            # Connect signals and slots
-            self.thread.started.connect(self.worker.run)
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)
-            self.thread.finished.connect(self.thread.deleteLater)
-            self.worker.progress.connect(self.updateLoadingProgressBar)
-            self.thread.finished.connect(self.loadingFinished)
-
-            # Start the worker thread
-            self.thread.start()
-
+            filePath, _ = QFileDialog.getOpenFileName(self, 'Open Image File', '/home', "Image files (*.tiff *.tif)")
+            # if num == 1:
+            #     filePath = 'D://test-gui/Demo Images//Images//Channel_1//r01c02f02.tiff'
+            # elif num == 2:
+            #     filePath = 'D://test-gui//Demo Images//Images//Channel_2//r01c02f02.tiff'
+            # else:
+            #     filePath = 'D://test-gui//Demo Images//Images//Channel_3//r01c02f02.tiff'
+                
+            if not filePath:
+                QMessageBox.information(self, "Information", "No file selected.")
+                return
+            
+            tempImageName = os.path.basename(filePath)
+            
+            if self.imageName == '':
+                self.imageName = tempImageName
+            elif self.imageName != tempImageName:
+                QMessageBox.warning(self, "Warning", "Selected file name does not match the expected: " + self.imageName)
+                return
+            
+            self.channelPath[num] = filePath
+            self.imageGridWidget.openImageAtPath(filePath, num, self.channelPath)
+            self.labelNameImage.setText(tempImageName)
+            
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to load image: {e}")
+            QMessageBox.critical(self, "Error", "Failed to load image: " + str(e))
+            
+    def openMask(self):
+        try:
+            filePath, _ = QFileDialog.getOpenFileName(self, 'Open Image File', '/home', "Image files (*.tiff *.tif)")
+            # filePath = 'D://test-gui//Demo Images//Images//Mask//r01c02f02.tiff'
+            if not filePath:
+                QMessageBox.information(self, "Information", "No file selected.")
+                return
+            
+            tempMaskName = os.path.basename(filePath)
+            
+            if self.imageName == '' or self.imageName != tempMaskName:
+                QMessageBox.warning(self, "Warning", "Selected file name does not match the expected: " + self.imageName)
+                return
 
-    def updateQAProgressBar(self):
-        checked_count = len(self.objectState["Object State"])
-        self.qaProgressBar.setValue(checked_count)
+            self.maskPath = filePath
+            self.extractObjects(self.maskPath)
+            
+            try:
+                # Create the worker thread
+                self.thread = QThread()
+                self.worker = Worker(self.maskArray, self.objects)
+                self.worker.moveToThread(self.thread)
+                # # Connect signals and slots
+                self.thread.started.connect(self.worker.run)
+                self.worker.finished.connect(self.thread.quit)
+                self.worker.finished.connect(self.worker.deleteLater)
+                self.thread.finished.connect(self.thread.deleteLater)
+                self.worker.progress.connect(self.updateLoadingProgressBar)
+                self.worker.finished.connect(self.loadingFinished)
+                # # Start the worker thread
+                self.thread.start()
 
-        percentage = (checked_count / len(self.objects)) * 100
-        self.qaProgressBar.setFormat(f"{percentage:.2f}% Checked")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
+                if self.thread.isRunning():
+                    self.thread.quit()          
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", "Failed to load Mask: " + str(e))
 
     def updateLoadingProgressBar(self, value):
         self.loadingProgressBar.setValue(value)
-
+        
     def loadingFinished(self):
         self.loadingProgressBar.setVisible(False)
-
-        # Display the mask image in the QGraphicsView
-        self.maskPixmap = QPixmap("all_objects_with_low_opacity.tiff")
-        self.maskItem = QGraphicsPixmapItem(self.maskPixmap)
-        self.scene.addItem(self.maskItem)
-        self.maskItem.setOpacity(0.5)
-
         self.populateObjectList()
+        self.imageGridWidget.changeMask('all_objects_with_low_opacity.tiff')
+        self.imageGridWidget.toggleMouseTracking()
 
-        self.toggleButton.setDisabled(False)
-        self.btnNext.setDisabled(False)
-        self.btnPre.setDisabled(False)
-        self.btnYes.setDisabled(False)
-        self.btnNo.setDisabled(False)
-        self.btnMerge.setDisabled(False)
-        self.toggleButton.setDisabled(False)
-        self.btnSaveInfo.setDisabled(False)
-        self.btnloadInfo.setDisabled(False)
-        self.btnNoForNonLabel.setDisabled(False)
+    def extractObjects(self, maskPath):
+        maskImage = Image.open(maskPath)
+        self.maskArray = np.array(maskImage)
+        uniqueObjects = np.unique(self.maskArray)
+        self.objects = uniqueObjects
+        self.objects = self.objects[1:]
+        self.objectPixelCount = {obj: np.sum(self.maskArray == obj) for obj in self.objects}
+        self.progressBar.setMaximum(len(self.objects))
 
-        self.labelNameImage.setText(self.imagePath)
-        self.labelNameMask.setText(self.maskPath)
-        self.view.setMouseTracking(True)
-        self.maskVisible = True
+    def populateObjectList(self):
+        self.objectList.clear()
+        for obj in self.objects:
+            pixelCount = self.objectPixelCount[obj]
+            item = QListWidgetItem(f"Object {int(obj)}: {pixelCount} pixels")
+            self.objectList.addItem(item)
 
-    def saveInfo(self):
-        default_file_name = "progress_" + os.path.splitext(os.path.basename(self.imagePath))[0] + ".csv"
-        self.saveFilePath, _ = QFileDialog.getSaveFileName(
-            None, "Save CSV", default_file_name, "CSV Files (*.csv);;All Files (*)"
-        )
-
-        if self.saveFilePath:
-            try:
-                with open(
-                    self.saveFilePath, mode="w", newline="", encoding="utf-8-sig"
-                ) as file:
-                    writer = csv.DictWriter(file, fieldnames=self.objectState.keys())
-                    writer.writeheader()
-                    rows = [
-                        dict(zip(self.objectState, t))
-                        for t in zip(*self.objectState.values())
-                    ]
-                    rows.append(
-                        {
-                            "Object Number": f"label_{self.objects[self.currentObjectIndex]}",
-                            "Object State": "Current index",
-                            "Note": "",
-                        }
-                    )
-                    for note in self.noteNonLabel:
-                        rows.append(
-                            {
-                                "Object Number": None,
-                                "Object State": None,
-                                "Note": note,  
-                            }
-                        )
-
-                    writer.writerows(rows)
-                QMessageBox.information(None, "Success", "File saved successfully.")
-                self.savedLabel = True
-            except Exception as e:
-                QMessageBox.critical(None, "Error", f"Failed to save file: {e}")
+    def changeMask(self):
+        if not self.modeDoubleCheck:
+            maskClone = np.where(self.maskArray == self.objects[self.currentObjectIndex], self.objects[self.currentObjectIndex], 0)
+            outputImage = np.zeros((maskClone.shape[0], maskClone.shape[1], 4), dtype=np.uint8)
+            color = self.worker.objectColors[self.objects[self.currentObjectIndex]]
+            outputImage[maskClone != 0] = [*color, 255]
         else:
-            QMessageBox.warning(None, "Warning", "Save operation cancelled.")
+            maskClone = np.where(self.maskArray == self.objectsForDoubleCheck[self.currentObjectIndex], self.objectsForDoubleCheck[self.currentObjectIndex], 0)
+            outputImage = np.zeros((maskClone.shape[0], maskClone.shape[1], 4), dtype=np.uint8)
+            color = self.worker.objectColors[self.objectsForDoubleCheck[self.currentObjectIndex]]
+            outputImage[maskClone != 0] = [*color, 255]
+        
+        img = Image.fromarray(outputImage, 'RGBA')
+        img.save('output_image.tiff', compression='tiff_lzw')
+        self.imageMaskClone = img
 
-    def loadInfo(self):
-        self.loadFilePath, _ = QFileDialog.getOpenFileName(
-            self, "Open file", "/home", "CSV Files (*.csv);;All Files (*)"
-        )
+        self.imageGridWidget.changeMask('output_image.tiff', maskClone)
+        
+        self.scaleToObject(maskClone)
+        self.imageGridWidget.changeTransparency(self.transparencySlider.value()/100)
 
-        if self.loadFilePath:
-            try:
-                with open(self.loadFilePath, mode="r", encoding="utf-8-sig") as file:
-                    reader = csv.DictReader(file)
-                    rows = list(reader)
-
-                    index_to_split = None
-                    for i, row in enumerate(rows):
-                        if row["Object State"] == "Current index":
-                            index_to_split = i
-                            break
-                    
-                    currentItem = int(rows[index_to_split].get("Object Number", "").replace("label_", "").strip())
-                    self.selectObjectById(currentItem)
-
-                    haveLabel = rows[:index_to_split]
-
-                    self.colorListItems(haveLabel)
-                    self.loadObjectState(haveLabel)
-                    self.updateQAProgressBar()
-
-                    if index_to_split < len(rows):
-                        self.noteNonLabel.clear()
-                        nonLabel = rows[index_to_split + 1:]
-                        for row in nonLabel:
-                            self.noteNonLabel.append(row["Note"])
-
-                QMessageBox.information(self, "Success", "File loaded successfully.")
-                self.savedLabel = True
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to load file: {e}")
+    def nextObject(self):
+        if self.modeDoubleCheck:
+            if self.currentObjectIndex < len(self.objectsForDoubleCheck) - 1:
+                self.currentObjectIndex += 1
         else:
-            QMessageBox.warning(None, "Warning", "Load operation cancelled.")
+            if self.currentObjectIndex < len(self.objects) - 1:
+                self.currentObjectIndex += 1
+                
+        self.objectList.setCurrentRow(self.currentObjectIndex)
+        self.changeMask()
 
-    def loadObjectState(self, rows):
-        self.objectState = {
-            "Object Number": [],
-            "Object State": [],
-            "Note": []
-        }
-        for row in rows:
-            self.objectState["Object Number"].append(row["Object Number"])
-            self.objectState["Object State"].append(row["Object State"])
-            self.objectState["Note"].append(row["Note"])
+    def previousObject(self):
+        if self.currentObjectIndex > 0:
+            self.currentObjectIndex -= 1
+        self.objectList.setCurrentRow(self.currentObjectIndex)
+        self.changeMask()
+        
+    def scaleToObject(self, maskClone):
+        indices = np.where(maskClone != 0)
+        if len(indices[0]) == 0 or len(indices[1]) == 0:
+            return
+        minRow, maxRow = indices[0].min(), indices[0].max()
+        minCol, maxCol = indices[1].min(), indices[1].max()
+        boundingRect = QRectF((minCol), minRow, (maxCol - minCol), (maxRow - minRow))
+        self.imageGridWidget.scaleToObject(boundingRect)
+        
+        pointX = (minCol + maxCol)/2
+        pointY = (minRow + maxRow)/2
+        self.coordinateLabel.setText(f"{int(pointX)}, {int(pointY)}")
 
-    def colorListItems(self, rows):
-        for row in rows:
-            numberObject = int(row["Object Number"].replace("label_", ""))
-            currentItem = self.objectList.findItems(
-                f"Object {(numberObject)}: {self.objectPixelCount[numberObject]} pixels",
-                Qt.MatchExactly,
-            )
-            if currentItem:
-                if row["Object State"] == "Yes":
-                    currentItem[0].setBackground(QColor("green"))
-                elif row["Object State"] == "No":
-                    currentItem[0].setBackground(QColor("Red"))
+    def onItemClicked(self, item):
+        index = self.objectList.row(item)
+        self.currentObjectIndex = index
+        self.changeMask()
+        
+    def toggleMask(self):
+        self.imageGridWidget.toggleMask()
+
+    def changeTransparency(self, value):
+        opacity = value / 100
+        self.imageGridWidget.changeTransparency(opacity)
+
+    def updateOpacityValue(self, value):
+        self.opacityValue.setText(str(value))
 
     def getReason(self):
         dialog = QDialog(self)
@@ -402,9 +405,15 @@ class ImageViewer(QWidget):
         else:
             QTextEdit.keyPressEvent(textEdit, event)
 
-    def insertState(self, label, note):
+    def insertState(self, label, note, flag):
+        if not flag:
+            self.insertStateNormal(label, note)
+        else:
+            self.insertStateDoubleCheck(label, note)
+
+    def insertStateNormal(self, label, note):
         object_number = self.objects[self.currentObjectIndex]
-        label_object_number = f"label_{object_number}"
+        label_object_number = f"label_{int(object_number)}"
         if label_object_number in self.objectState["Object Number"]:
             index = self.objectState["Object Number"].index(label_object_number)
             self.objectState["Object State"][index] = label
@@ -413,155 +422,45 @@ class ImageViewer(QWidget):
             self.objectState["Object Number"].append(label_object_number)
             self.objectState["Object State"].append(label)
             self.objectState["Note"].append(note)
+        
+    def insertStateDoubleCheck(self, label, note):
+        object_number = self.objectsForDoubleCheck[self.currentObjectIndex]
+        label_object_number = f"label_{int(object_number)}"
+
+        if label_object_number in self.objectState["Object Number"]:
+            index = self.objectState["Object Number"].index(label_object_number)
+            objectState1 = self.objectState["Object State"][index]    
+        else:
+            objectState1 = None    
+    
+        if label_object_number in self.objectStateDoubleCheck["Object Number"]:
+            index = self.objectStateDoubleCheck["Object Number"].index(label_object_number)
+            self.objectStateDoubleCheck["Object State 2"][index] = label
+            self.objectStateDoubleCheck["Note"][index] = note
+        else:
+            self.objectStateDoubleCheck["Object Number"].append(label_object_number)
+            self.objectStateDoubleCheck["Object State 1"].append(objectState1)
+            self.objectStateDoubleCheck["Object State 2"].append(label)
+            self.objectStateDoubleCheck["Note"].append(note)
+            
+    def markObjectYes(self):
+        reason = ""
+        self.updateObjectListColor(self.currentObjectIndex, 'green')
+        self.updateProgressBar()
+        self.insertState("Yes", reason, self.modeDoubleCheck)
+            
+    def markObjectNo(self):
+        reason = self.getReason()
+        self.insertState("No", reason, self.modeDoubleCheck)
+        self.updateObjectListColor(self.currentObjectIndex, 'red')
+        self.updateProgressBar()
 
     def noForNonLabel(self):
         reason = self.getReason()
-        self.noteNonLabel.append(reason)
-
-    def markObjectYes(self):
-        reason = ""
-        self.insertState("Yes", reason)
-        self.updateObjectListColor(self.currentObjectIndex, "green")
-        self.updateQAProgressBar()
-
-    def markObjectNo(self):
-        reason = self.getReason()
-        self.insertState("No", reason)
-        self.updateObjectListColor(self.currentObjectIndex, "red")
-        self.updateQAProgressBar()
-
-    def resizeEvent(self, event):
-        if self.scene.items():
-            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-        super().resizeEvent(event)
-
-    def toggleMask(self):
-        if self.maskVisible:
-            if hasattr(self, "singleMaskItem"):
-                self.singleMaskItem.hide()
-            if hasattr(self, "maskItem"):
-                self.maskItem.hide()
+        if not self.modeDoubleCheck:
+            self.noteNonLabel.append(reason)        
         else:
-            if hasattr(self, "singleMaskItem"):
-                self.singleMaskItem.show()
-            elif hasattr(self, "maskItem"):
-                self.maskItem.show()
-        self.maskVisible = not self.maskVisible
-
-    def extractObjects(self, maskPath):
-        maskImage = Image.open(maskPath)
-        self.maskArray = np.array(maskImage)
-        uniqueObjects = np.unique(self.maskArray)
-        self.objects = uniqueObjects
-        self.objects = self.objects[1:]
-        self.objectPixelCount = {obj: np.sum(self.maskArray == obj) for obj in self.objects}
-        self.qaProgressBar.setMaximum(len(self.objects))
-
-    def populateObjectList(self):
-        self.objectList.clear()
-        for obj in self.objects:
-            pixel_count = self.objectPixelCount[obj]
-            item = QListWidgetItem(f"Object {int(obj)}: {pixel_count} pixels")
-            self.objectList.addItem(item)
-
-    def mergeMaskAndImage(self):
-        maskClone = np.where(self.maskArray != 0, 1, 0)
-        img = Image.open(self.imagePath)
-        imgArray = np.array(img)
-
-        if len(imgArray.shape) == 3:
-            for c in range(3):
-                imgArray[:, :, c][maskClone == 1] = 0
-        else:
-            imgArray[maskClone == 1] = 0
-        modifiedImage = Image.fromarray(imgArray)
-        modifiedImage.save("output_image.tiff")
-
-        if hasattr(self, "maskItem"):
-            self.scene.removeItem(self.maskItem)
-            del self.maskItem
-
-        self.maskPixmap = QPixmap("output_image.tiff")
-        self.maskItem = QGraphicsPixmapItem(self.maskPixmap)
-        self.scene.addItem(self.maskItem)
-        self.transparencySlider.setValue(100)
-        self.maskVisible = True
-        self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-
-    def changeMask(self):
-        # Get the current object
-        current_object = self.objects[self.currentObjectIndex]
-
-        # Create a mask clone for the current object
-        maskClone = np.where(self.maskArray == current_object, current_object, 0)
-
-        # Create an RGBA image with the same size as the mask
-        outputImage = np.zeros((maskClone.shape[0], maskClone.shape[1], 4), dtype=np.uint8)
-
-        # Set the color of the current object
-        color = self.worker.objectColors[current_object]
-        outputImage[maskClone != 0] = [*color, 255]  # Set RGBA with full opacity
-
-        # Create an image from the mask array
-        img = Image.fromarray(outputImage, "RGBA")
-        img.save("output_image.tiff", compression="tiff_lzw")
-        self.imageMaskClone = img
-
-        # Remove existing mask items if present
-        if hasattr(self, "maskItem"):
-            self.scene.removeItem(self.maskItem)
-            del self.maskItem
-        if hasattr(self, "singleMaskItem"):
-            self.scene.removeItem(self.singleMaskItem)
-            del self.singleMaskItem
-
-        # Display the new mask image
-        self.singleMaskPixmap = QPixmap("output_image.tiff")
-        self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
-        self.scene.addItem(self.singleMaskItem)
-        self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
-        self.maskVisible = True
-
-        # Scale to the object
-        self.scaleToObject(maskClone)
-
-    def previousObject(self):
-        if self.currentObjectIndex > 0:
-            self.currentObjectIndex -= 1
-        self.objectList.setCurrentRow(self.currentObjectIndex)
-        self.changeMask()
-        self.view.drawBoundingBox(self.objects[self.currentObjectIndex])
-
-    def nextObject(self):
-        if self.currentObjectIndex < len(self.objects) - 1:
-            self.currentObjectIndex += 1
-        self.objectList.setCurrentRow(self.currentObjectIndex)
-        self.changeMask()
-        self.view.drawBoundingBox(self.objects[self.currentObjectIndex])
-
-    def updateOpacityValue(self, value):
-        self.opacityValue.setText(str(value))
-
-    def changeTransparency(self, value):
-        opacity = value / 100
-        if hasattr(self, "maskItem"):
-            self.maskItem.setOpacity(opacity)
-        if hasattr(self, "singleMaskItem"):
-            self.singleMaskItem.setOpacity(opacity)
-
-    def scaleToObject(self, maskClone):
-        indices = np.where(maskClone != 0)
-        if len(indices[0]) == 0 or len(indices[1]) == 0:
-            return
-        minRow, maxRow = indices[0].min(), indices[0].max()
-        minCol, maxCol = indices[1].min(), indices[1].max()
-        boundingRect = QRectF((minCol), minRow, (maxCol - minCol), (maxRow - minRow))
-        self.view.fitInView(boundingRect, Qt.KeepAspectRatio)
-        self.view.scale(1 / 4, 1 / 4)
-
-        pointX = (minCol + maxCol) / 2
-        pointY = (minRow + maxRow) / 2
-        self.coordinateLabel.setText(f"{int(pointX)}, {int(pointY)}")
+            self.noteNonLabelDoubleCheck.append(reason)
 
     def updateObjectListColor(self, index, color):
         item = self.objectList.item(index)
@@ -569,18 +468,133 @@ class ImageViewer(QWidget):
         if item:
             item.setBackground(QColor(color))
 
+    def updateProgressBar(self):
+        checked_count = len(self.objectState['Object State'])
+        self.progressBar.setValue(checked_count)
+
+        percentage = (checked_count / len(self.objects)) * 100
+        self.progressBar.setFormat(f'{percentage:.2f}% Checked')
+        
+    def saveProgress(self):
+        tempName = self.imageName.split('.', 1)
+        self.saveFilePath, _ = QFileDialog.getSaveFileName(None, "Save CSV", tempName[0], "CSV Files (*.csv);;All Files (*)")
+
+        if self.saveFilePath:
+            try:
+                with open(
+                    self.saveFilePath, mode="w", newline="", encoding="utf-8-sig"
+                ) as file:
+                    writer = csv.DictWriter(file, fieldnames=self.objectState.keys())
+                    writer.writeheader()
+                    rows = [
+                        dict(zip(self.objectState, t))
+                        for t in zip(*self.objectState.values())
+                    ]
+                    rows.append(
+                        {
+                            "Object Number": f"label_{int(self.objects[self.currentObjectIndex])}",
+                            "Object State": "Current index",
+                            "Note": "",
+                        }
+                    )
+                    for note in self.noteNonLabel:
+                        rows.append(
+                            {
+                                "Object Number": None,
+                                "Object State": None,
+                                "Note": note,  
+                            }
+                        )
+
+                    writer.writerows(rows)
+                QMessageBox.information(None, "Success", "File saved successfully.")
+                self.savedLabel = True
+            except Exception as e:
+                QMessageBox.critical(None, "Error", f"Failed to save file: {e}")
+        else:
+            QMessageBox.warning(None, "Warning", "Save operation cancelled.")
+
+    def loadProgress(self):
+        self.loadFilePath, _ = QFileDialog.getOpenFileName(self, 'Open file', '/home', "CSV Files (*.csv);;All Files (*)")
+        tempLoadName = os.path.basename(self.loadFilePath).split('.', 1)[0]
+        tempName = self.imageName.split('.', 1)[0]
+
+        if tempLoadName != tempName:
+            QMessageBox.warning(self, "Warning", "Selected file name does not match the expected: " + self.imageName)
+            return
+        
+        if self.loadFilePath:
+            try:
+                with open(self.loadFilePath, mode="r", encoding="utf-8-sig") as file:
+                    reader = csv.DictReader(file)
+                    rows = list(reader)
+
+                    index_to_split = None
+                    for i, row in enumerate(rows):
+                        if row["Object State"] == "Current index":
+                            index_to_split = i
+                            break
+                    currentItem = int(rows[index_to_split].get("Object Number", "").replace("label_", "").strip())
+                    self.selectObjectById(currentItem)
+
+                    haveLabel = rows[:index_to_split]
+
+                    self.colorListItems(haveLabel)
+                    self.loadObjectState(haveLabel)
+                    self.updateQAProgressBar()
+
+                    if index_to_split < len(rows):
+                        self.noteNonLabel.clear()
+                        nonLabel = rows[index_to_split + 1:]
+                        for row in nonLabel:
+                            self.noteNonLabel.append(row["Note"])
+
+                QMessageBox.information(self, "Success", "File loaded successfully.")
+                self.savedLabel = True
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load file: {e}")
+        else:
+            QMessageBox.warning(None, "Warning", "Load operation cancelled.")
+
+    def updateQAProgressBar(self):
+        checked_count = len(self.objectState["Object State"])
+        self.progressBar.setValue(checked_count)
+
+        percentage = (checked_count / len(self.objects)) * 100
+        self.progressBar.setFormat(f"{percentage:.2f}% Checked")
+     
     def selectObjectById(self, obj_id):
         if obj_id in self.objects:
             index = self.objects.tolist().index(obj_id)
             self.objectList.setCurrentRow(index)
             self.onItemClicked(self.objectList.item(index))
-            self.view.drawBoundingBox(obj_id)
-
-    def onItemClicked(self, item):
-        index = self.objectList.row(item)
-        self.currentObjectIndex = index
-        self.changeMask()
-        self.view.drawBoundingBox(self.objects[index])
+            self.changeMask()
+            
+    def loadObjectState(self, rows):
+        self.objectState = {
+            "Object Number": [],
+            "Object State": [],
+            "Note": []
+        }
+        for row in rows:
+            self.objectState["Object Number"].append(row["Object Number"])
+            self.objectState["Object State"].append(row["Object State"])
+            self.objectState["Note"].append(row["Note"])
+            
+    def colorListItems(self, rows):
+        for row in rows:
+            numberObject = int(row["Object Number"].replace("label_", ""))
+            currentItem = self.objectList.findItems(
+                f"Object {(numberObject)}: {self.objectPixelCount[numberObject]} pixels",
+                Qt.MatchExactly,
+            )
+            if currentItem:
+                if row["Object State"] == "Yes":
+                    currentItem[0].setBackground(QColor("green"))
+                elif row["Object State"] == "No":
+                    currentItem[0].setBackground(QColor("Red"))
+    def updateCoordinates(self, x, y):
+        self.coordinateLabel.setText(f"{x}, {y}")
 
     def highlightObjectAtPoint(self, point):
         x, y = int(point.x()), int(point.y())
@@ -589,14 +603,13 @@ class ImageViewer(QWidget):
             and y >= 0
             and x < self.maskArray.shape[1]
             and y < self.maskArray.shape[0]
-            and self.maskVisible
+            and self.imageGridWidget.maskVisible
         ):
             obj = self.maskArray[y, x]
             if obj != 0:
                 self.highlightSingleObject(obj)
-
+            
     def highlightSingleObject(self, obj):
-        # Create a copy of the original mask image with low opacity
         highlightedMaskArray = self.worker.maskImageArray.copy()
 
         # Increase the opacity of the hovered object
@@ -606,25 +619,14 @@ class ImageViewer(QWidget):
         # Create an image from the updated mask array
         highlightedMaskImage = Image.fromarray(highlightedMaskArray, "RGBA")
         highlightedMaskImage.save("highlighted_single_object.tiff", compression="tiff_lzw")
-
-        if hasattr(self, "singleMaskItem"):
-            self.scene.removeItem(self.singleMaskItem)
-            del self.singleMaskItem
-
-        self.singleMaskPixmap = QPixmap("highlighted_single_object.tiff")
-        self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
-        self.scene.addItem(self.singleMaskItem)
-        self.singleMaskItem.setOpacity(1.0)
+        
+        self.imageGridWidget.addHighlight("highlighted_single_object.tiff")
 
     def closeEvent(self, event):
         if not self.savedLabel:
-            reply = QMessageBox.question(
-                self,
-                "Message",
-                "You have unsaved changes. Are you sure you want to quit?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
+            reply = QMessageBox.question(self, 'Message', 
+                "You have unsaved changes. Are you sure you want to quit?", 
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
             if reply == QMessageBox.Yes:
                 event.accept()
@@ -632,3 +634,72 @@ class ImageViewer(QWidget):
                 event.ignore()
         else:
             event.accept()
+
+    def startDoubleCheck(self):
+        self.selectRandomObjectsForDoubleCheck()
+        self.modeDoubleCheck = True
+
+    def selectRandomObjectsForDoubleCheck(self, percentage=5):
+        object_list = list(self.objects)
+        total_objects = len(object_list)
+        number_to_select = max(1, int((percentage / 100) * total_objects))
+        self.objectsForDoubleCheck = random.sample(object_list, number_to_select)
+        self.objectsForDoubleCheck = [int(obj) for obj in self.objectsForDoubleCheck]
+        self.populateObjectListForDoubleCheck()
+                
+    def populateObjectListForDoubleCheck(self):
+        self.objectList.clear()
+        for obj in self.objectsForDoubleCheck:
+            pixelCount = self.objectPixelCount[obj]
+            item = QListWidgetItem(f"Object {int(obj)}: {pixelCount} pixels")
+            self.objectList.addItem(item)
+
+    def saveDoubleCheckProgress(self):
+        tempName = self.imageName.split('.', 1)
+        self.saveFilePathDoubleCheck, _ = QFileDialog.getSaveFileName(None, "Save CSV", tempName[0] + "_double_check", "CSV Files (*.csv);;All Files (*)")
+
+        if self.saveFilePathDoubleCheck:
+            try:
+                with open(
+                    self.saveFilePathDoubleCheck, mode="w", newline="", encoding="utf-8-sig"
+                ) as file:
+                    writer = csv.DictWriter(file, fieldnames=self.objectStateDoubleCheck.keys())
+                    writer.writeheader()
+                    rows = [
+                        dict(zip(self.objectStateDoubleCheck, t))
+                        for t in zip(*self.objectStateDoubleCheck.values())
+                    ]
+                    
+                    for note in self.noteNonLabelDoubleCheck:
+                        rows.append(
+                            {
+                                "Object Number": None,
+                                "Object State 1": None,
+                                "Object State 2": None,
+                                "Note": note,  
+                            }
+                        )
+
+                    writer.writerows(rows)
+                QMessageBox.information(None, "Success", "File saved successfully.")
+                self.savedLabel = True
+            except Exception as e:
+                QMessageBox.critical(None, "Error", f"Failed to save file: {e}")
+        else:
+            QMessageBox.warning(None, "Warning", "Save operation cancelled.")
+
+    def setupHotKeyDefault(self):
+        self.hotkeys = {
+            'Next': Qt.Key_D,
+            'Previous': Qt.Key_A,
+            'Yes': Qt.Key_I,
+            'No': Qt.Key_O,
+            'Toggle': Qt.Key_H,
+            'Zoom In': Qt.Key_E,
+            'Zoom Out': Qt.Key_Q
+        }
+
+    def editHotKey(self):
+        dlg = EditHotkeysDialog(self.hotkeys, self)
+        if dlg.exec_():
+            QMessageBox.information(self, "Info", "Hotkeys updated successfully.")
