@@ -29,14 +29,16 @@ class CustomGraphicsView(QGraphicsView):
         self.mainController = mainController
 
     def wheelEvent(self, event):
-        if QApplication.keyboardModifiers() == Qt.ControlModifier:
+        if QApplication.keyboardModifiers() == Qt.KeyboardModifier.ControlModifier:
             factor = 1.1 if event.angleDelta().y() > 0 else 0.9
             self.scale(factor, factor)
             self.zoomed.emit(factor)
-        else:
-            self.viewport().wheelEvent(event)
+        # else:
+        #     super().wheelEvent(event)
                 
     def mousePressEvent(self, event):
+        if not self.hasMouseTracking():
+            return
         point = self.mapToScene(event.pos())
         self.pointTracked.emit(int(point.x()), int(point.y()))  # Phát signal
         super().mousePressEvent(event)
@@ -46,6 +48,8 @@ class CustomGraphicsView(QGraphicsView):
         self.moved.emit(self.mapToScene(self.viewport().rect().center()))
 
     def mouseMoveEvent(self, event):
+        if not self.hasMouseTracking():
+            return
         point = self.mapToScene(event.pos())
         self.mainController.highlightObjectAtPoint(point)
         super().mouseMoveEvent(event)
@@ -128,6 +132,8 @@ class CustomGraphicsView(QGraphicsView):
             super().keyPressEvent(event)
             
     def mouseDoubleClickEvent(self, event):
+        if not self.hasMouseTracking():
+            return
         if event.button() == Qt.LeftButton:
             point = self.mapToScene(event.pos())
             x, y = int(point.x()), int(point.y())
