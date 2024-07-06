@@ -171,7 +171,7 @@ class ImageViewer(QWidget):
         self.objectState["Object Number"] = []
         self.objectState["Object State"] = []
         self.objectState["Note"] = []
-        
+
         self.noteNonLabel = []
 
     def loadImage(self):
@@ -265,7 +265,9 @@ class ImageViewer(QWidget):
         self.maskVisible = True
 
     def saveInfo(self):
-        default_file_name = "progress_" + os.path.splitext(os.path.basename(self.imagePath))[0] + ".csv"
+        default_file_name = (
+            "progress_" + os.path.splitext(os.path.basename(self.imagePath))[0] + ".csv"
+        )
         self.saveFilePath, _ = QFileDialog.getSaveFileName(
             None, "Save CSV", default_file_name, "CSV Files (*.csv);;All Files (*)"
         )
@@ -293,7 +295,7 @@ class ImageViewer(QWidget):
                             {
                                 "Object Number": None,
                                 "Object State": None,
-                                "Note": note,  
+                                "Note": note,
                             }
                         )
 
@@ -321,8 +323,13 @@ class ImageViewer(QWidget):
                         if row["Object State"] == "Current index":
                             index_to_split = i
                             break
-                    
-                    currentItem = int(rows[index_to_split].get("Object Number", "").replace("label_", "").strip())
+
+                    currentItem = int(
+                        rows[index_to_split]
+                        .get("Object Number", "")
+                        .replace("label_", "")
+                        .strip()
+                    )
                     self.selectObjectById(currentItem)
 
                     haveLabel = rows[:index_to_split]
@@ -333,7 +340,7 @@ class ImageViewer(QWidget):
 
                     if index_to_split < len(rows):
                         self.noteNonLabel.clear()
-                        nonLabel = rows[index_to_split + 1:]
+                        nonLabel = rows[(index_to_split + 1):]
                         for row in nonLabel:
                             self.noteNonLabel.append(row["Note"])
 
@@ -345,11 +352,7 @@ class ImageViewer(QWidget):
             QMessageBox.warning(None, "Warning", "Load operation cancelled.")
 
     def loadObjectState(self, rows):
-        self.objectState = {
-            "Object Number": [],
-            "Object State": [],
-            "Note": []
-        }
+        self.objectState = {"Object Number": [], "Object State": [], "Note": []}
         for row in rows:
             self.objectState["Object Number"].append(row["Object Number"])
             self.objectState["Object State"].append(row["Object State"])
@@ -376,7 +379,9 @@ class ImageViewer(QWidget):
         textEdit.setPlainText(f"({self.coordinateLabel.text()}) - ")
         textEdit.moveCursor(QTextCursor.End)
 
-        textEdit.keyPressEvent = lambda event: self.handleKeyPress(event, dialog, textEdit)
+        textEdit.keyPressEvent = lambda event: self.handleKeyPress(
+            event, dialog, textEdit
+        )
 
         btnBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
         btnBox.accepted.connect(dialog.accept)
@@ -454,7 +459,9 @@ class ImageViewer(QWidget):
         uniqueObjects = np.unique(self.maskArray)
         self.objects = uniqueObjects
         self.objects = self.objects[1:]
-        self.objectPixelCount = {obj: np.sum(self.maskArray == obj) for obj in self.objects}
+        self.objectPixelCount = {
+            obj: np.sum(self.maskArray == obj) for obj in self.objects
+        }
         self.qaProgressBar.setMaximum(len(self.objects))
 
     def populateObjectList(self):
@@ -496,7 +503,9 @@ class ImageViewer(QWidget):
         maskClone = np.where(self.maskArray == current_object, current_object, 0)
 
         # Create an RGBA image with the same size as the mask
-        outputImage = np.zeros((maskClone.shape[0], maskClone.shape[1], 4), dtype=np.uint8)
+        outputImage = np.zeros(
+            (maskClone.shape[0], maskClone.shape[1], 4), dtype=np.uint8
+        )
 
         # Set the color of the current object
         color = self.worker.objectColors[current_object]
@@ -605,7 +614,9 @@ class ImageViewer(QWidget):
 
         # Create an image from the updated mask array
         highlightedMaskImage = Image.fromarray(highlightedMaskArray, "RGBA")
-        highlightedMaskImage.save("highlighted_single_object.tiff", compression="tiff_lzw")
+        highlightedMaskImage.save(
+            "highlighted_single_object.tiff", compression="tiff_lzw"
+        )
 
         if hasattr(self, "singleMaskItem"):
             self.scene.removeItem(self.singleMaskItem)

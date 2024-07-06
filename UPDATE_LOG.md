@@ -15,7 +15,7 @@
 
 ## Separation into Multiple Modules
 
-- **Date**: 19-06-2024
+- **Date**: 12-06-2024
 - **Modules Created**:
   - `custom_graphics_view.py`
   - `image_viewer.py`
@@ -69,9 +69,17 @@
 
 ---
 
+## Add Button to Check Non-label Objects
+
+- **Date**: 20-06-2024
+- **Changes**:
+  - Added button to check non-label objects in `ImageViewer`.
+  - Fixed load and save progress to work for non-label objects.  
+
 ## Future Updates
 
 - **Plan**:
+  - Option to show/hide bounding box of selected object.
   - Optimize image loading and processing time.
   - Enhance UI with additional features like object filtering and search.
   - Implement more robust error handling and logging.
