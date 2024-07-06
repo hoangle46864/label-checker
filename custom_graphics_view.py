@@ -1,62 +1,132 @@
-from PyQt5.QtWidgets import QGraphicsView, QGraphicsRectItem, QApplication
-from PyQt5.QtCore import Qt, QRectF
-from PyQt5.QtGui import QPen, QColor
+from PyQt5.QtWidgets import (
+    QMessageBox, 
+    QApplication,
+    QGraphicsView, 
+    QGraphicsScene, 
+    QGraphicsPixmapItem,
+    QGraphicsRectItem)
+from PyQt5.QtCore import Qt, pyqtSignal, QPointF, QRectF
+from PyQt5.QtGui import QPixmap, QPen, QColor
+
 import numpy as np
 
-
 class CustomGraphicsView(QGraphicsView):
-    def __init__(self, scene, parent):
-        super().__init__(scene)
-        self.parent = parent
-        self.setMouseTracking(False)  # Disable mouse tracking by default
+    zoomed = pyqtSignal(float)
+    moved = pyqtSignal(QPointF)
+    pointTracked = pyqtSignal(int, int)
+    scrolled = pyqtSignal(int, int)
+    
+    def __init__(self, mainController, parent=None):
+        super().__init__(parent)
+        self.scene = QGraphicsScene(self)
+        self.setScene(self.scene)
+        self.setInteractive(True)
+        self.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.setMouseTracking(False)
+        self.maskItem = None
+        self.singleMaskItem = None
         self.boundingBox = None
+        self.mainController = mainController
 
     def wheelEvent(self, event):
         if QApplication.keyboardModifiers() == Qt.ControlModifier:
-            factor = 1.1
-            if event.angleDelta().y() > 0:
-                self.scale(factor, factor)
-            else:
-                self.scale(1 / factor, 1 / factor)
+            factor = 1.1 if event.angleDelta().y() > 0 else 0.9
+            self.scale(factor, factor)
+            self.zoomed.emit(factor)
         else:
-            super().wheelEvent(event)
-
-    def zoomIn(self):
-        factor = 1.1
-        self.scale(factor, factor)
-
-    def zoomOut(self):
-        factor = 1 / 1.1
-        self.scale(factor, factor)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_D:
-            self.parent.nextObject()
-        elif event.key() == Qt.Key_A:
-            self.parent.previousObject()
-        elif event.key() == Qt.Key_I:
-            self.parent.markObjectYes()
-        elif event.key() == Qt.Key_O:
-            self.parent.markObjectNo()
-        elif event.key() == Qt.Key_H:
-            self.parent.toggleMask()
-        elif event.key() == Qt.Key_E:
-            self.zoomIn()
-        elif event.key() == Qt.Key_Q:
-            self.zoomOut()
-        else:
-            super().keyPressEvent(event)
-
+            self.viewport().wheelEvent(event)
+                
     def mousePressEvent(self, event):
         point = self.mapToScene(event.pos())
-        self.parent.coordinateLabel.setText(f"{int(point.x())}, {int(point.y())}")
-        super(CustomGraphicsView, self).mousePressEvent(event)
+        self.pointTracked.emit(int(point.x()), int(point.y()))  # Phát signal
+        super().mousePressEvent(event)
+        
+    def mouseReleaseEvent(self, event):
+        super().mouseReleaseEvent(event)
+        self.moved.emit(self.mapToScene(self.viewport().rect().center()))
 
     def mouseMoveEvent(self, event):
         point = self.mapToScene(event.pos())
-        self.parent.highlightObjectAtPoint(point)
+        self.mainController.highlightObjectAtPoint(point)
         super().mouseMoveEvent(event)
+        
+    def scrollContentsBy(self, dx, dy):
+        super().scrollContentsBy(dx, dy)
+        self.scrolled.emit(self.horizontalScrollBar().value(), self.verticalScrollBar().value())
 
+    def zoomIn(self):
+        self.scale(1.1, 1.1)
+        self.moved.emit(self.mapToScene(self.viewport().rect().center()))
+
+    def zoomOut(self):
+        self.scale(0.9, 0.9)
+        self.moved.emit(self.mapToScene(self.viewport().rect().center()))
+
+    def openImage(self, imagePath):
+        try:
+            pixmap = QPixmap(imagePath)
+            if pixmap.isNull():
+                raise ValueError("The image file could not be loaded.")
+            self.scene.clear()
+            item = QGraphicsPixmapItem(pixmap)
+            self.scene.addItem(item)
+            self.scene.setSceneRect(item.boundingRect())
+            self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+        except Exception as e:
+            QMessageBox.warning(self, "Warning", f"Failed to load image: {e}")
+            
+    def addMask(self, maskPixmap):
+        if self.maskItem:
+            if self.maskItem.scene() == self.scene:
+                self.scene.removeItem(self.maskItem)
+                
+        if self.singleMaskItem:
+            if self.singleMaskItem.scene() == self.scene:
+                self.scene.removeItem(self.singleMaskItem)
+        
+        self.maskItem = QGraphicsPixmapItem(maskPixmap)
+        self.maskItem.setOpacity(self.parent().opacityView)
+        self.scene.addItem(self.maskItem)
+        
+        
+    def addSingleMaskItem(self, maskPixmap):        
+        if self.singleMaskItem:
+            if self.singleMaskItem.scene() == self.scene:
+                self.scene.removeItem(self.singleMaskItem)
+        
+        self.singleMaskItem = QGraphicsPixmapItem(maskPixmap)
+        self.singleMaskItem.setOpacity(1)
+        self.scene.addItem(self.singleMaskItem)
+        
+    def addBoundingBox(self, boundingRect):
+        if self.boundingBox:
+            self.scene.removeItem(self.boundingBox)
+            
+        pen = QPen(QColor("red"))
+        pen.setWidth(1)
+        pen.setJoinStyle(Qt.MiterJoin)
+        self.boundingBox = QGraphicsRectItem(boundingRect)
+        self.boundingBox.setPen(pen)
+        self.scene.addItem(self.boundingBox)
+        
+    def keyPressEvent(self, event):
+        if event.key() == self.mainController.hotkeys['Next']:
+            self.mainController.nextObject()
+        elif event.key() == self.mainController.hotkeys['Previous']:
+            self.mainController.previousObject()
+        elif event.key() == self.mainController.hotkeys['Yes']:
+            self.mainController.markObjectYes()
+        elif event.key() == self.mainController.hotkeys['No']:
+            self.mainController.markObjectNo()
+        elif event.key() == self.mainController.hotkeys['Toggle']:
+            self.mainController.toggleMask()
+        elif event.key() == self.mainController.hotkeys['Zoom In']:
+            self.parent().syncZoomIn()
+        elif event.key() == self.mainController.hotkeys['Zoom Out']:
+            self.parent().syncZoomOut()
+        else:
+            super().keyPressEvent(event)
+            
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:
             point = self.mapToScene(event.pos())
@@ -64,27 +134,10 @@ class CustomGraphicsView(QGraphicsView):
             if (
                 x >= 0
                 and y >= 0
-                and x < self.parent.maskArray.shape[1]
-                and y < self.parent.maskArray.shape[0]
+                and x < self.mainController.maskArray.shape[1]
+                and y < self.mainController.maskArray.shape[0]
             ):
-                obj = self.parent.maskArray[y, x]
+                obj = self.mainController.maskArray[y, x]
                 if obj != 0:
-                    self.parent.selectObjectById(obj)
+                    self.mainController.selectObjectById(obj)
         super().mouseDoubleClickEvent(event)
-
-    def drawBoundingBox(self, obj_id):
-        if self.boundingBox:
-            self.scene().removeItem(self.boundingBox)
-        maskClone = self.parent.maskArray == obj_id
-        indices = np.where(maskClone)
-        if len(indices[0]) == 0 or len(indices[1]) == 0:
-            return
-        minRow, maxRow = indices[0].min(), indices[0].max()
-        minCol, maxCol = indices[1].min(), indices[1].max()
-        boundingRect = QRectF(minCol, minRow, maxCol - minCol + 1, maxRow - minRow + 1)
-        pen = QPen(QColor("red"))
-        pen.setWidth(1)
-        pen.setJoinStyle(Qt.MiterJoin)
-        self.boundingBox = QGraphicsRectItem(boundingRect)
-        self.boundingBox.setPen(pen)
-        self.scene().addItem(self.boundingBox)
