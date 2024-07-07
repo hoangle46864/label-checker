@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QPushButton,
-    QGraphicsScene,
     QGraphicsPixmapItem,
     QDialog,
     QTextEdit,
@@ -20,7 +19,7 @@ from PyQt5.QtWidgets import (
     QSplitter,
 )
 from PyQt5.QtGui import QPixmap, QFont, QColor, QTextCursor
-from PyQt5.QtCore import Qt, QRectF, QThread
+from PyQt5.QtCore import Qt
 import csv
 import numpy as np
 from PIL import Image
@@ -40,7 +39,6 @@ class ImageViewer(QWidget):
 
         leftWidget = QWidget()
         leftLayout = QVBoxLayout()
-        leftWidget.setLayout(leftLayout)
 
         rightWidget = QWidget()
         rightLayout = QVBoxLayout()
@@ -56,9 +54,9 @@ class ImageViewer(QWidget):
         self.labelNameMask = QLabel("")
         leftLayout.addWidget(self.labelNameMask)
 
-        self.scene = QGraphicsScene()
-        self.view = CustomGraphicsView(self.scene, self)
-        leftLayout.addWidget(self.view)
+        self.imageView = CustomGraphicsView(self)
+        leftLayout.addWidget(self.imageView)
+        leftWidget.setLayout(leftLayout)
 
         # Progress bar for loading and processing
         self.loadingProgressBar = QProgressBar(self)
@@ -106,11 +104,6 @@ class ImageViewer(QWidget):
         self.btnNoForNonLabel.clicked.connect(self.noForNonLabel)
         rightLayout.addWidget(self.btnNoForNonLabel)
         self.btnNoForNonLabel.setDisabled(True)
-
-        self.btnMerge = QPushButton("Merge", self)
-        self.btnMerge.clicked.connect(self.mergeMaskAndImage)
-        rightLayout.addWidget(self.btnMerge)
-        self.btnMerge.setDisabled(True)
 
         self.toggleButton = QPushButton("Show/Hide Mask", self)
         self.toggleButton.clicked.connect(self.toggleMask)
@@ -186,14 +179,10 @@ class ImageViewer(QWidget):
         if not self.maskPath:
             return
 
-        # Display the base image in the QGraphicsView
+        # Display the base image in the ImageView
         try:
-            # Initialize the QGraphicsScene
-            self.basePixmap = QPixmap(self.imagePath)
-            self.baseItem = QGraphicsPixmapItem(self.basePixmap)
-            self.scene.addItem(self.baseItem)
-            self.scene.setSceneRect(self.baseItem.boundingRect())
-            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+            self.baseImage = np.array(Image.open(self.imagePath))
+            self.imageView.setImage(self.baseImage)
 
             # Initialize loading progress bar
             self.loadingProgressBar.setMaximum(100)
@@ -208,21 +197,25 @@ class ImageViewer(QWidget):
             # Extract objects from the mask
             self.extractObjects(self.maskPath)
 
-            # Create and start the worker thread
-            self.thread = QThread()
-            self.worker = Worker(self.maskArray, self.objects)
-            self.worker.moveToThread(self.thread)
+            try:
+                # Create the worker thread
+                self.worker = Worker(self.maskArray, self.objects)
 
-            # Connect signals and slots
-            self.thread.started.connect(self.worker.run)
-            self.worker.finished.connect(self.thread.quit)
-            self.worker.finished.connect(self.worker.deleteLater)
-            self.thread.finished.connect(self.thread.deleteLater)
-            self.worker.progress.connect(self.updateLoadingProgressBar)
-            self.thread.finished.connect(self.loadingFinished)
+                # Connect the signals and slots
+                self.worker.finished.connect(self.loadingFinished)
+                self.worker.progress.connect(self.updateLoadingProgressBar)
 
-            # Start the worker thread
-            self.thread.start()
+                # Ensure worker is properly cleaned up
+                self.worker.finished.connect(self.worker.deleteLater)
+
+                # Start the worker thread
+                self.worker.start()
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
+                if hasattr(self, "worker") and self.worker.isRunning():
+                    self.worker.quit()
+                    self.worker.wait()
 
         except Exception as e:
             QMessageBox.warning(self, "Error", f"Failed to load image: {e}")
@@ -240,11 +233,10 @@ class ImageViewer(QWidget):
     def loadingFinished(self):
         self.loadingProgressBar.setVisible(False)
 
-        # Display the mask image in the QGraphicsView
+        # Display the mask image
         self.maskPixmap = QPixmap("all_objects_with_low_opacity.tiff")
         self.maskItem = QGraphicsPixmapItem(self.maskPixmap)
-        self.scene.addItem(self.maskItem)
-        self.maskItem.setOpacity(0.5)
+        self.imageView.addItem(self.maskItem)
 
         self.populateObjectList()
 
@@ -253,7 +245,6 @@ class ImageViewer(QWidget):
         self.btnPre.setDisabled(False)
         self.btnYes.setDisabled(False)
         self.btnNo.setDisabled(False)
-        self.btnMerge.setDisabled(False)
         self.toggleButton.setDisabled(False)
         self.btnSaveInfo.setDisabled(False)
         self.btnloadInfo.setDisabled(False)
@@ -261,8 +252,8 @@ class ImageViewer(QWidget):
 
         self.labelNameImage.setText(self.imagePath)
         self.labelNameMask.setText(self.maskPath)
-        self.view.setMouseTracking(True)
         self.maskVisible = True
+        self.imageView.setMouseTracking(True)
 
     def saveInfo(self):
         default_file_name = (
@@ -435,11 +426,6 @@ class ImageViewer(QWidget):
         self.updateObjectListColor(self.currentObjectIndex, "red")
         self.updateQAProgressBar()
 
-    def resizeEvent(self, event):
-        if self.scene.items():
-            self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-        super().resizeEvent(event)
-
     def toggleMask(self):
         if self.maskVisible:
             if hasattr(self, "singleMaskItem"):
@@ -471,30 +457,6 @@ class ImageViewer(QWidget):
             item = QListWidgetItem(f"Object {int(obj)}: {pixel_count} pixels")
             self.objectList.addItem(item)
 
-    def mergeMaskAndImage(self):
-        maskClone = np.where(self.maskArray != 0, 1, 0)
-        img = Image.open(self.imagePath)
-        imgArray = np.array(img)
-
-        if len(imgArray.shape) == 3:
-            for c in range(3):
-                imgArray[:, :, c][maskClone == 1] = 0
-        else:
-            imgArray[maskClone == 1] = 0
-        modifiedImage = Image.fromarray(imgArray)
-        modifiedImage.save("output_image.tiff")
-
-        if hasattr(self, "maskItem"):
-            self.scene.removeItem(self.maskItem)
-            del self.maskItem
-
-        self.maskPixmap = QPixmap("output_image.tiff")
-        self.maskItem = QGraphicsPixmapItem(self.maskPixmap)
-        self.scene.addItem(self.maskItem)
-        self.transparencySlider.setValue(100)
-        self.maskVisible = True
-        self.view.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
-
     def changeMask(self):
         # Get the current object
         current_object = self.objects[self.currentObjectIndex]
@@ -518,16 +480,16 @@ class ImageViewer(QWidget):
 
         # Remove existing mask items if present
         if hasattr(self, "maskItem"):
-            self.scene.removeItem(self.maskItem)
+            self.imageView.removeItem(self.maskItem)
             del self.maskItem
         if hasattr(self, "singleMaskItem"):
-            self.scene.removeItem(self.singleMaskItem)
+            self.imageView.removeItem(self.singleMaskItem)
             del self.singleMaskItem
 
         # Display the new mask image
         self.singleMaskPixmap = QPixmap("output_image.tiff")
         self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
-        self.scene.addItem(self.singleMaskItem)
+        self.imageView.addItem(self.singleMaskItem)
         self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
         self.maskVisible = True
 
@@ -539,14 +501,14 @@ class ImageViewer(QWidget):
             self.currentObjectIndex -= 1
         self.objectList.setCurrentRow(self.currentObjectIndex)
         self.changeMask()
-        self.view.drawBoundingBox(self.objects[self.currentObjectIndex])
+        self.imageView.drawBoundingBox(self.objects[self.currentObjectIndex])
 
     def nextObject(self):
         if self.currentObjectIndex < len(self.objects) - 1:
             self.currentObjectIndex += 1
         self.objectList.setCurrentRow(self.currentObjectIndex)
         self.changeMask()
-        self.view.drawBoundingBox(self.objects[self.currentObjectIndex])
+        self.imageView.drawBoundingBox(self.objects[self.currentObjectIndex])
 
     def updateOpacityValue(self, value):
         self.opacityValue.setText(str(value))
@@ -559,14 +521,12 @@ class ImageViewer(QWidget):
             self.singleMaskItem.setOpacity(opacity)
 
     def scaleToObject(self, maskClone):
-        indices = np.where(maskClone != 0)
+        indices = np.where(maskClone)
         if len(indices[0]) == 0 or len(indices[1]) == 0:
             return
         minRow, maxRow = indices[0].min(), indices[0].max()
         minCol, maxCol = indices[1].min(), indices[1].max()
-        boundingRect = QRectF((minCol), minRow, (maxCol - minCol), (maxRow - minRow))
-        self.view.fitInView(boundingRect, Qt.KeepAspectRatio)
-        self.view.scale(1 / 4, 1 / 4)
+        self.imageView.getView().setRange(xRange=(minCol, maxCol), yRange=(minRow, maxRow), padding=1)
 
         pointX = (minCol + maxCol) / 2
         pointY = (minRow + maxRow) / 2
@@ -583,13 +543,13 @@ class ImageViewer(QWidget):
             index = self.objects.tolist().index(obj_id)
             self.objectList.setCurrentRow(index)
             self.onItemClicked(self.objectList.item(index))
-            self.view.drawBoundingBox(obj_id)
+            self.imageView.drawBoundingBox(obj_id)
 
     def onItemClicked(self, item):
         index = self.objectList.row(item)
         self.currentObjectIndex = index
         self.changeMask()
-        self.view.drawBoundingBox(self.objects[index])
+        self.imageView.drawBoundingBox(self.objects[index])
 
     def highlightObjectAtPoint(self, point):
         x, y = int(point.x()), int(point.y())
@@ -601,6 +561,7 @@ class ImageViewer(QWidget):
             and self.maskVisible
         ):
             obj = self.maskArray[y, x]
+            # print(f"Highlighting object: {obj}")
             if obj != 0:
                 self.highlightSingleObject(obj)
 
@@ -608,9 +569,10 @@ class ImageViewer(QWidget):
         # Create a copy of the original mask image with low opacity
         highlightedMaskArray = self.worker.maskImageArray.copy()
 
-        # Increase the opacity of the hovered object
+        # Find indices of the hovered object
         mask_indices = self.maskArray == obj
-        highlightedMaskArray[mask_indices, 3] = 255  # Set alpha channel to max
+        # Set the opacity of the hovered object to max
+        highlightedMaskArray[mask_indices, 3] = 255
 
         # Create an image from the updated mask array
         highlightedMaskImage = Image.fromarray(highlightedMaskArray, "RGBA")
@@ -619,13 +581,13 @@ class ImageViewer(QWidget):
         )
 
         if hasattr(self, "singleMaskItem"):
-            self.scene.removeItem(self.singleMaskItem)
+            self.imageView.removeItem(self.singleMaskItem)
             del self.singleMaskItem
 
         self.singleMaskPixmap = QPixmap("highlighted_single_object.tiff")
         self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
-        self.scene.addItem(self.singleMaskItem)
-        self.singleMaskItem.setOpacity(1.0)
+        self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
+        self.imageView.addItem(self.singleMaskItem)
 
     def closeEvent(self, event):
         if not self.savedLabel:

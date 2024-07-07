@@ -1,33 +1,25 @@
-from PyQt5.QtWidgets import QGraphicsView, QGraphicsRectItem, QApplication
+from PyQt5.QtWidgets import QGraphicsRectItem
 from PyQt5.QtCore import Qt, QRectF
 from PyQt5.QtGui import QPen, QColor
+from pyqtgraph import ImageView
 import numpy as np
 
 
-class CustomGraphicsView(QGraphicsView):
-    def __init__(self, scene, parent):
-        super().__init__(scene)
+class CustomGraphicsView(ImageView):
+    def __init__(self, parent):
+        super().__init__()
         self.parent = parent
         self.setMouseTracking(False)  # Disable mouse tracking by default
         self.boundingBox = None
-
-    def wheelEvent(self, event):
-        if QApplication.keyboardModifiers() == Qt.ControlModifier:
-            factor = 1.1
-            if event.angleDelta().y() > 0:
-                self.scale(factor, factor)
-            else:
-                self.scale(1 / factor, 1 / factor)
-        else:
-            super().wheelEvent(event)
+        self.scene.sigMouseMoved.connect(self.mouseMoveEvent)
 
     def zoomIn(self):
         factor = 1.1
-        self.scale(factor, factor)
+        self.view.scaleBy(factor, factor)
 
     def zoomOut(self):
         factor = 1 / 1.1
-        self.scale(factor, factor)
+        self.view.scaleBy(factor, factor)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_D:
@@ -47,19 +39,28 @@ class CustomGraphicsView(QGraphicsView):
         else:
             super().keyPressEvent(event)
 
-    def mousePressEvent(self, event):
-        point = self.mapToScene(event.pos())
-        self.parent.coordinateLabel.setText(f"{int(point.x())}, {int(point.y())}")
-        super(CustomGraphicsView, self).mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        point = self.mapToScene(event.pos())
+    def mouseMoveEvent(self, pos):
+        if not self.hasMouseTracking():
+            return
+        # print("Mouse Move Event Triggered")
+        point = self.getView().mapSceneToView(pos)
+        # print(f"Mouse Point: {point}")
         self.parent.highlightObjectAtPoint(point)
-        super().mouseMoveEvent(event)
+
+    def mousePressEvent(self, event):
+        if not self.hasMouseTracking():
+            return
+        print("Mouse Press Event Triggered")
+        point = self.getView().mapSceneToView(event.pos())
+        # print(f"Mouse Press Point: {point}")
+        self.parent.coordinateLabel.setText(f"{int(point.x())}, {int(point.y())}")
+        super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event):
+        if not self.hasMouseTracking():
+            return
         if event.button() == Qt.LeftButton:
-            point = self.mapToScene(event.pos())
+            point = self.getView().mapSceneToView(event.pos())
             x, y = int(point.x()), int(point.y())
             if (
                 x >= 0
@@ -74,7 +75,8 @@ class CustomGraphicsView(QGraphicsView):
 
     def drawBoundingBox(self, obj_id):
         if self.boundingBox:
-            self.scene().removeItem(self.boundingBox)
+            self.view.removeItem(self.boundingBox)
+
         maskClone = self.parent.maskArray == obj_id
         indices = np.where(maskClone)
         if len(indices[0]) == 0 or len(indices[1]) == 0:
@@ -87,4 +89,4 @@ class CustomGraphicsView(QGraphicsView):
         pen.setJoinStyle(Qt.MiterJoin)
         self.boundingBox = QGraphicsRectItem(boundingRect)
         self.boundingBox.setPen(pen)
-        self.scene().addItem(self.boundingBox)
+        self.view.addItem(self.boundingBox)

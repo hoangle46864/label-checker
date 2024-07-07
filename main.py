@@ -1,8 +1,7 @@
 import sys
 from PyQt5.QtWidgets import QApplication
 import pyqtgraph
-# from image_viewer import ImageViewer
-from image_viewer_new import ImageViewer
+from image_viewer import ImageViewer
 
 pyqtgraph.setConfigOption('imageAxisOrder', 'row-major')
 
