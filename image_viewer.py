@@ -167,6 +167,20 @@ class ImageViewer(QWidget):
 
         self.noteNonLabel = []
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_D:
+            self.nextObject()
+        elif event.key() == Qt.Key_A:
+            self.previousObject()
+        elif event.key() == Qt.Key_I:
+            self.markObjectYes()
+        elif event.key() == Qt.Key_O:
+            self.markObjectNo()
+        elif event.key() == Qt.Key_H:
+            self.toggleMask()
+        else:
+            super().keyPressEvent(event)
+
     def loadImage(self):
         self.imagePath, _ = QFileDialog.getOpenFileName(
             self, "Open file", "/home", "Image files (*.tiff *.tif)"

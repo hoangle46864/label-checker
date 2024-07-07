@@ -13,32 +13,6 @@ class CustomGraphicsView(ImageView):
         self.boundingBox = None
         self.scene.sigMouseMoved.connect(self.mouseMoveEvent)
 
-    def zoomIn(self):
-        factor = 1.1
-        self.view.scaleBy(factor, factor)
-
-    def zoomOut(self):
-        factor = 1 / 1.1
-        self.view.scaleBy(factor, factor)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_D:
-            self.parent.nextObject()
-        elif event.key() == Qt.Key_A:
-            self.parent.previousObject()
-        elif event.key() == Qt.Key_I:
-            self.parent.markObjectYes()
-        elif event.key() == Qt.Key_O:
-            self.parent.markObjectNo()
-        elif event.key() == Qt.Key_H:
-            self.parent.toggleMask()
-        elif event.key() == Qt.Key_E:
-            self.zoomIn()
-        elif event.key() == Qt.Key_Q:
-            self.zoomOut()
-        else:
-            super().keyPressEvent(event)
-
     def mouseMoveEvent(self, pos):
         if not self.hasMouseTracking():
             return
