@@ -69,17 +69,15 @@
 
 ---
 
-## Add Button to Check Non-label Objects
+## Add multi channel views
 
-- **Date**: 20-06-2024
+- **Date**: 06-07-2024
 - **Changes**:
-  - Added button to check non-label objects in `ImageViewer`.
-  - Fixed load and save progress to work for non-label objects.  
+  - Added support for multi-channel views.
 
 ## Future Updates
 
 - **Plan**:
-  - Option to show/hide bounding box of selected object.
   - Optimize image loading and processing time.
   - Enhance UI with additional features like object filtering and search.
   - Implement more robust error handling and logging.

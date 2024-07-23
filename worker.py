@@ -37,10 +37,12 @@ class Worker(QThread):
 
             # Store the color for each object from the colors array
             for i, obj in enumerate(self.objects):
+                obj = int(obj)
                 self.objectColors[obj] = colors[obj]
                 self.progress.emit(int((i + 1) / len(self.objects) * 100))
 
             alpha_channel = np.full((colors.shape[0], 1), 128, dtype=np.uint8)
+            alpha_channel[0] = 0
             color_map = np.concatenate((colors, alpha_channel), axis=1)
 
             # Create a color-mapped image

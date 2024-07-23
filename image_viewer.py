@@ -1,28 +1,30 @@
+import csv
 import os
+
+import numpy as np
+from PIL import Image
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QColor, QFont, QPixmap, QTextCursor
 from PyQt5.QtWidgets import (
-    QFileDialog,
-    QMessageBox,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QPushButton,
-    QGraphicsPixmapItem,
     QDialog,
-    QTextEdit,
     QDialogButtonBox,
+    QFileDialog,
+    QGraphicsPixmapItem,
+    QHBoxLayout,
     QLabel,
-    QSlider,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QProgressBar,
+    QPushButton,
+    QSlider,
     QSplitter,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt5.QtGui import QPixmap, QFont, QColor, QTextCursor
-from PyQt5.QtCore import Qt
-import csv
-import numpy as np
-from PIL import Image
+
 from custom_graphics_view import CustomGraphicsView
 from worker import Worker
 
@@ -183,12 +185,18 @@ class ImageViewer(QWidget):
 
     def loadImage(self):
         self.imagePath, _ = QFileDialog.getOpenFileName(
-            self, "Open file", "/home", "Image files (*.tiff *.tif)"
+            self,
+            "Open file",
+            "/home",
+            "Image files (*.tiff *.tif)",
         )
         if not self.imagePath:
             return
         self.maskPath, _ = QFileDialog.getOpenFileName(
-            self, "Open file", "/home", "Mask files (*.tiff *.tif)"
+            self,
+            "Open file",
+            "/home",
+            "Mask files (*.tiff *.tif)",
         )
         if not self.maskPath:
             return
@@ -247,9 +255,18 @@ class ImageViewer(QWidget):
     def loadingFinished(self):
         self.loadingProgressBar.setVisible(False)
 
+        # Clear the current mask
+        if hasattr(self, "maskItem"):
+            self.imageView.removeItem(self.maskItem)
+        if hasattr(self, "singleMaskItem"):
+            self.imageView.removeItem(self.singleMaskItem)
+        if self.imageView.boundingBox:
+            self.imageView.removeItem(self.imageView.boundingBox)
+
         # Display the mask image
         self.maskPixmap = QPixmap("all_objects_with_low_opacity.tiff")
         self.maskItem = QGraphicsPixmapItem(self.maskPixmap)
+        self.maskItem.setOpacity(self.transparencySlider.value() / 100)
         self.imageView.addItem(self.maskItem)
 
         self.populateObjectList()
@@ -274,13 +291,19 @@ class ImageViewer(QWidget):
             "progress_" + os.path.splitext(os.path.basename(self.imagePath))[0] + ".csv"
         )
         self.saveFilePath, _ = QFileDialog.getSaveFileName(
-            None, "Save CSV", default_file_name, "CSV Files (*.csv);;All Files (*)"
+            None,
+            "Save CSV",
+            default_file_name,
+            "CSV Files (*.csv);;All Files (*)",
         )
 
         if self.saveFilePath:
             try:
                 with open(
-                    self.saveFilePath, mode="w", newline="", encoding="utf-8-sig"
+                    self.saveFilePath,
+                    mode="w",
+                    newline="",
+                    encoding="utf-8-sig",
                 ) as file:
                     writer = csv.DictWriter(file, fieldnames=self.objectState.keys())
                     writer.writeheader()
@@ -293,7 +316,7 @@ class ImageViewer(QWidget):
                             "Object Number": f"label_{self.objects[self.currentObjectIndex]}",
                             "Object State": "Current index",
                             "Note": "",
-                        }
+                        },
                     )
                     for note in self.noteNonLabel:
                         rows.append(
@@ -301,7 +324,7 @@ class ImageViewer(QWidget):
                                 "Object Number": None,
                                 "Object State": None,
                                 "Note": note,
-                            }
+                            },
                         )
 
                     writer.writerows(rows)
@@ -314,12 +337,15 @@ class ImageViewer(QWidget):
 
     def loadInfo(self):
         self.loadFilePath, _ = QFileDialog.getOpenFileName(
-            self, "Open file", "/home", "CSV Files (*.csv);;All Files (*)"
+            self,
+            "Open file",
+            "/home",
+            "CSV Files (*.csv);;All Files (*)",
         )
 
         if self.loadFilePath:
             try:
-                with open(self.loadFilePath, mode="r", encoding="utf-8-sig") as file:
+                with open(self.loadFilePath, encoding="utf-8-sig") as file:
                     reader = csv.DictReader(file)
                     rows = list(reader)
 
@@ -333,7 +359,7 @@ class ImageViewer(QWidget):
                         rows[index_to_split]
                         .get("Object Number", "")
                         .replace("label_", "")
-                        .strip()
+                        .strip(),
                     )
                     self.selectObjectById(currentItem)
 
@@ -345,7 +371,7 @@ class ImageViewer(QWidget):
 
                     if index_to_split < len(rows):
                         self.noteNonLabel.clear()
-                        nonLabel = rows[(index_to_split + 1):]
+                        nonLabel = rows[(index_to_split + 1) :]
                         for row in nonLabel:
                             self.noteNonLabel.append(row["Note"])
 
@@ -385,7 +411,9 @@ class ImageViewer(QWidget):
         textEdit.moveCursor(QTextCursor.End)
 
         textEdit.keyPressEvent = lambda event: self.handleKeyPress(
-            event, dialog, textEdit
+            event,
+            dialog,
+            textEdit,
         )
 
         btnBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
@@ -480,7 +508,8 @@ class ImageViewer(QWidget):
 
         # Create an RGBA image with the same size as the mask
         outputImage = np.zeros(
-            (maskClone.shape[0], maskClone.shape[1], 4), dtype=np.uint8
+            (maskClone.shape[0], maskClone.shape[1], 4),
+            dtype=np.uint8,
         )
 
         # Set the color of the current object
@@ -503,8 +532,8 @@ class ImageViewer(QWidget):
         # Display the new mask image
         self.singleMaskPixmap = QPixmap("output_image.tiff")
         self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
-        self.imageView.addItem(self.singleMaskItem)
         self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
+        self.imageView.addItem(self.singleMaskItem)
         self.maskVisible = True
 
         # Scale to the object
@@ -540,7 +569,11 @@ class ImageViewer(QWidget):
             return
         minRow, maxRow = indices[0].min(), indices[0].max()
         minCol, maxCol = indices[1].min(), indices[1].max()
-        self.imageView.getView().setRange(xRange=(minCol, maxCol), yRange=(minRow, maxRow), padding=1)
+        self.imageView.getView().setRange(
+            xRange=(minCol, maxCol),
+            yRange=(minRow, maxRow),
+            padding=1,
+        )
 
         pointX = (minCol + maxCol) / 2
         pointY = (minRow + maxRow) / 2
@@ -585,13 +618,17 @@ class ImageViewer(QWidget):
 
         # Find indices of the hovered object
         mask_indices = self.maskArray == obj
+
         # Set the opacity of the hovered object to max
         highlightedMaskArray[mask_indices, 3] = 255
+        # Set the opacity of the other objects to min
+        # highlightedMaskArray[~mask_indices, 3] = 0
 
         # Create an image from the updated mask array
         highlightedMaskImage = Image.fromarray(highlightedMaskArray, "RGBA")
         highlightedMaskImage.save(
-            "highlighted_single_object.tiff", compression="tiff_lzw"
+            "highlighted_single_object.tiff",
+            compression="tiff_lzw",
         )
 
         if hasattr(self, "singleMaskItem"):
