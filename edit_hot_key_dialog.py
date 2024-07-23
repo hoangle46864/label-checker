@@ -1,6 +1,9 @@
-from PyQt5.QtWidgets import QLineEdit, QDialog, QFormLayout, QPushButton, QVBoxLayout
-from PyQt5.QtGui import QKeySequence
+from __future__ import annotations
+
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QKeySequence
+from PyQt5.QtWidgets import QDialog, QFormLayout, QLineEdit, QPushButton, QVBoxLayout
+
 
 class KeySequenceEdit(QLineEdit):
     def keyPressEvent(self, event):
@@ -14,7 +17,8 @@ class KeySequenceEdit(QLineEdit):
             keySequence = QKeySequence(mod | key)
             self.setText(keySequence.toString())
         event.accept()
-        
+
+
 class EditHotkeysDialog(QDialog):
     def __init__(self, hotkeys, parent=None):
         super().__init__(parent)
