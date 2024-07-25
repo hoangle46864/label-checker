@@ -263,6 +263,15 @@ class ImageViewer(QWidget):
         if self.imageView.boundingBox:
             self.imageView.removeItem(self.imageView.boundingBox)
 
+        # Clear object state and non-label notes
+        self.objectState = {}
+
+        self.objectState["Object Number"] = []
+        self.objectState["Object State"] = []
+        self.objectState["Note"] = []
+
+        self.noteNonLabel = []
+
         # Display the mask image
         self.maskPixmap = QPixmap("all_objects_with_low_opacity.tiff")
         self.maskItem = QGraphicsPixmapItem(self.maskPixmap)
