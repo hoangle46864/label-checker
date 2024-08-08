@@ -279,6 +279,7 @@ class ImageViewer(QWidget):
         self.objectState["Note"] = []
 
         self.noteNonLabel = []
+        self.pixelDead = []
 
         # Display the mask image
         self.maskPixmap = QPixmap("all_objects_with_low_opacity.tiff")
