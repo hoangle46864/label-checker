@@ -2,7 +2,7 @@
 import numpy as np
 
 
-def find_disconnected_regions(matrix):
+def find_disconnected_regions(matrix, pixelDead):
     # Get the dimensions of the matrix
     rows, cols = matrix.shape
 
@@ -68,6 +68,6 @@ def find_disconnected_regions(matrix):
     # Find and return disconnected regions
     disconnected_regions = {
         value: {'count': len(labels), 'centroids': list(labels.values())} 
-        for value, labels in region_count.items() if len(labels) > 1
+        for value, labels in region_count.items() if len(labels) > 1 or value in pixelDead
     }
     return disconnected_regions

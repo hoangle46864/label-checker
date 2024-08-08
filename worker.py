@@ -60,10 +60,11 @@ class FindDisconnectedRegionsWorker(QThread):
     progress = pyqtSignal(int)
     finished = pyqtSignal(dict)
 
-    def __init__(self, maskArray):
+    def __init__(self, maskArray, pixelDead):
         super().__init__()
         self.maskArray = maskArray
+        self.pixelDead = pixelDead
 
     def run(self):
-        disconnected_regions = find_disconnected_regions(self.maskArray)
+        disconnected_regions = find_disconnected_regions(self.maskArray, self.pixelDead)
         self.finished.emit(disconnected_regions)

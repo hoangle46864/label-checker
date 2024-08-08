@@ -169,6 +169,7 @@ class ImageViewer(QWidget):
         self.savedLabel = False
         self.objects = []
         self.objectState = {}
+        self.pixelDead = []
 
         self.objectState["Object Number"] = []
         self.objectState["Object State"] = []
@@ -515,6 +516,8 @@ class ImageViewer(QWidget):
             pixel_count = self.objectPixelCount[obj]
             item = QListWidgetItem(f"Object {int(obj)}: {pixel_count} pixels")
             self.objectList.addItem(item)
+            if(pixel_count <= 10):
+                self.pixelDead.append(obj)
 
     def changeMask(self):
         # Get the current object
@@ -692,7 +695,7 @@ class ImageViewer(QWidget):
         progressDialog.show()
 
         # Create the worker thread
-        self.region_analysis_worker = FindDisconnectedRegionsWorker(self.maskArray)
+        self.region_analysis_worker = FindDisconnectedRegionsWorker(self.maskArray, self.pixelDead)
         self.region_analysis_worker.progress.connect(progressDialog.setValue)
         self.region_analysis_worker.finished.connect(
             self.onFindDisconnectedRegionsFinished,
@@ -712,15 +715,16 @@ class ImageViewer(QWidget):
             count = info['count']
             centroids = info['centroids']
             reason = ', '.join(f"({x}, {y})" for x, y in centroids)
-            reason = reason + " các toạ độ trùng label"
-            # print(obj_id, count, reason)
+            if(count > 1): 
+                reason = reason + " các toạ độ trùng label"
+            else:
+                reason = reason + " toạ độ label thừa chưa xoá"
             tmp = self.currentObjectIndex
-            if count > 1:
-                index = self.objects.tolist().index(obj_id)
-                self.currentObjectIndex = index
-                self.insertState("No", reason)
-                self.updateObjectListColor(index, "red")
-                self.updateQAProgressBar()
+            index = self.objects.tolist().index(obj_id)
+            self.currentObjectIndex = index
+            self.insertState("No", reason)
+            self.updateObjectListColor(index, "red")
+            self.updateQAProgressBar()
             self.currentObjectIndex = tmp
 
         QMessageBox.information(
@@ -728,3 +732,4 @@ class ImageViewer(QWidget):
             "Info",
             "Disconnected regions analysis completed.",
         )
+                
