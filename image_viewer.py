@@ -708,10 +708,20 @@ class ImageViewer(QWidget):
         progressDialog.close()
 
     def onFindDisconnectedRegionsFinished(self, disconnected_regions):
-        for obj_id, count in disconnected_regions.items():
+        for obj_id, info in disconnected_regions.items():
+            count = info['count']
+            centroids = info['centroids']
+            reason = ', '.join(f"({x}, {y})" for x, y in centroids)
+            reason = reason + " các toạ độ trùng label"
+            # print(obj_id, count, reason)
+            tmp = self.currentObjectIndex
             if count > 1:
                 index = self.objects.tolist().index(obj_id)
+                self.currentObjectIndex = index
+                self.insertState("No", reason)
                 self.updateObjectListColor(index, "red")
+                self.updateQAProgressBar()
+            self.currentObjectIndex = tmp
 
         QMessageBox.information(
             self,

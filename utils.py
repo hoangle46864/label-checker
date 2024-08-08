@@ -12,10 +12,14 @@ def find_disconnected_regions(matrix):
     # Define the connectivity (8-connectivity)
     directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
 
+    # Dictionary to store centroids of each label
+    centroids = {}
+
     # Helper function for Depth-First Search
     def dfs(r, c, current_label):
         stack = [(r, c)]
         label_matrix[r, c] = current_label
+        coordinates = [(r, c)]
         while stack:
             x, y = stack.pop()
             for dx, dy in directions:
@@ -28,6 +32,19 @@ def find_disconnected_regions(matrix):
                 ):
                     label_matrix[nx, ny] = current_label
                     stack.append((nx, ny))
+                    coordinates.append((nx, ny))
+        
+        # Calculate the centroid
+        if coordinates:
+            centroid_x = round(sum(x for x, y in coordinates) / len(coordinates))
+            centroid_y = round(sum(y for x, y in coordinates) / len(coordinates))
+
+            # Adjust centroid to ensure it lies within the region
+            if (centroid_x, centroid_y) not in coordinates:
+                closest_point = min(coordinates, key=lambda point: (point[0] - centroid_x) ** 2 + (point[1] - centroid_y) ** 2)
+                centroid_x, centroid_y = closest_point
+
+            centroids[current_label] = (centroid_y, centroid_x)
 
     current_label = 1
     for r in range(rows):
@@ -44,11 +61,13 @@ def find_disconnected_regions(matrix):
                 value = matrix[r, c]
                 label = label_matrix[r, c]
                 if value not in region_count:
-                    region_count[value] = set()
-                region_count[value].add(label)
+                    region_count[value] = {}
+                if label not in region_count[value]:
+                    region_count[value][label] = centroids[label]
 
     # Find and return disconnected regions
     disconnected_regions = {
-        value: len(labels) for value, labels in region_count.items() if len(labels) > 1
+        value: {'count': len(labels), 'centroids': list(labels.values())} 
+        for value, labels in region_count.items() if len(labels) > 1
     }
     return disconnected_regions
