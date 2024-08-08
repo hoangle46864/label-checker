@@ -33,7 +33,7 @@ def find_disconnected_regions(matrix, pixelDead):
                     label_matrix[nx, ny] = current_label
                     stack.append((nx, ny))
                     coordinates.append((nx, ny))
-        
+
         # Calculate the centroid
         if coordinates:
             centroid_x = round(sum(x for x, y in coordinates) / len(coordinates))
@@ -41,7 +41,11 @@ def find_disconnected_regions(matrix, pixelDead):
 
             # Adjust centroid to ensure it lies within the region
             if (centroid_x, centroid_y) not in coordinates:
-                closest_point = min(coordinates, key=lambda point: (point[0] - centroid_x) ** 2 + (point[1] - centroid_y) ** 2)
+                closest_point = min(
+                    coordinates,
+                    key=lambda point: (point[0] - centroid_x) ** 2
+                    + (point[1] - centroid_y) ** 2,
+                )
                 centroid_x, centroid_y = closest_point
 
             centroids[current_label] = (centroid_y, centroid_x)
@@ -67,7 +71,8 @@ def find_disconnected_regions(matrix, pixelDead):
 
     # Find and return disconnected regions
     disconnected_regions = {
-        value: {'count': len(labels), 'centroids': list(labels.values())} 
-        for value, labels in region_count.items() if len(labels) > 1 or value in pixelDead
+        value: {"count": len(labels), "centroids": list(labels.values())}
+        for value, labels in region_count.items()
+        if (len(labels) > 1) or (value in pixelDead)
     }
     return disconnected_regions

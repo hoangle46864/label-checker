@@ -516,7 +516,7 @@ class ImageViewer(QWidget):
             pixel_count = self.objectPixelCount[obj]
             item = QListWidgetItem(f"Object {int(obj)}: {pixel_count} pixels")
             self.objectList.addItem(item)
-            if(pixel_count <= 10):
+            if pixel_count <= 10:
                 self.pixelDead.append(obj)
 
     def changeMask(self):
@@ -695,7 +695,10 @@ class ImageViewer(QWidget):
         progressDialog.show()
 
         # Create the worker thread
-        self.region_analysis_worker = FindDisconnectedRegionsWorker(self.maskArray, self.pixelDead)
+        self.region_analysis_worker = FindDisconnectedRegionsWorker(
+            self.maskArray,
+            self.pixelDead,
+        )
         self.region_analysis_worker.progress.connect(progressDialog.setValue)
         self.region_analysis_worker.finished.connect(
             self.onFindDisconnectedRegionsFinished,
@@ -712,10 +715,11 @@ class ImageViewer(QWidget):
 
     def onFindDisconnectedRegionsFinished(self, disconnected_regions):
         for obj_id, info in disconnected_regions.items():
-            count = info['count']
-            centroids = info['centroids']
-            reason = ', '.join(f"({x}, {y})" for x, y in centroids)
-            if(count > 1): 
+            count = info["count"]
+            centroids = info["centroids"]
+            reason = ", ".join(f"({x}, {y})" for x, y in centroids)
+
+            if count > 1:
                 reason = reason + " các toạ độ trùng label"
             else:
                 reason = reason + " toạ độ label thừa chưa xoá"
@@ -732,4 +736,3 @@ class ImageViewer(QWidget):
             "Info",
             "Disconnected regions analysis completed.",
         )
-                
