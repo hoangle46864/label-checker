@@ -6,6 +6,7 @@ from PIL import Image
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor, QFont, QPixmap, QTextCursor
 from PyQt5.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -17,6 +18,7 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QProgressBar,
+    QProgressDialog,
     QPushButton,
     QSlider,
     QSplitter,
@@ -26,7 +28,7 @@ from PyQt5.QtWidgets import (
 )
 
 from custom_graphics_view import CustomGraphicsView
-from worker import Worker
+from worker import FindDisconnectedRegionsWorker, Worker
 
 
 class ImageViewer(QWidget):
@@ -121,6 +123,11 @@ class ImageViewer(QWidget):
         self.btnloadInfo.clicked.connect(self.loadInfo)
         rightLayout.addWidget(self.btnloadInfo)
         self.btnloadInfo.setDisabled(True)
+
+        self.btnFindDisconnected = QPushButton("Find Disconnected Regions", self)
+        self.btnFindDisconnected.clicked.connect(self.findDisconnectedRegions)
+        rightLayout.addWidget(self.btnFindDisconnected)
+        self.btnFindDisconnected.setDisabled(True)
 
         self.coordinateLabel = QLabel(self)
         font = QFont()
@@ -289,6 +296,7 @@ class ImageViewer(QWidget):
         self.btnSaveInfo.setDisabled(False)
         self.btnloadInfo.setDisabled(False)
         self.btnNoForNonLabel.setDisabled(False)
+        self.btnFindDisconnected.setDisabled(False)
 
         self.labelNameImage.setText(self.imagePath)
         self.labelNameMask.setText(self.maskPath)
@@ -665,3 +673,48 @@ class ImageViewer(QWidget):
                 event.ignore()
         else:
             event.accept()
+
+    def findDisconnectedRegions(self):
+        if self.maskArray is None:
+            QMessageBox.warning(self, "Warning", "Please load an image and mask first.")
+            return
+
+        # Create and configure the progress dialog
+        progressDialog = QProgressDialog(
+            "Finding disconnected regions...",
+            None,
+            0,
+            0,
+            self,
+        )
+        progressDialog.setWindowModality(Qt.WindowModal)
+        progressDialog.setWindowTitle("Progress")
+        progressDialog.show()
+
+        # Create the worker thread
+        self.region_analysis_worker = FindDisconnectedRegionsWorker(self.maskArray)
+        self.region_analysis_worker.progress.connect(progressDialog.setValue)
+        self.region_analysis_worker.finished.connect(
+            self.onFindDisconnectedRegionsFinished,
+        )
+
+        # Start the worker thread
+        self.region_analysis_worker.start()
+
+        # Run the event loop until the worker is finished
+        while self.region_analysis_worker.isRunning():
+            QApplication.processEvents()
+
+        progressDialog.close()
+
+    def onFindDisconnectedRegionsFinished(self, disconnected_regions):
+        for obj_id, count in disconnected_regions.items():
+            if count > 1:
+                index = self.objects.tolist().index(obj_id)
+                self.updateObjectListColor(index, "red")
+
+        QMessageBox.information(
+            self,
+            "Info",
+            "Disconnected regions analysis completed.",
+        )

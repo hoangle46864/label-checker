@@ -4,6 +4,8 @@ import numpy as np
 from PIL import Image
 from PyQt5.QtCore import QThread, pyqtSignal
 
+from utils import find_disconnected_regions
+
 
 class Worker(QThread):
     finished = pyqtSignal()
@@ -52,3 +54,16 @@ class Worker(QThread):
         maskImage.save("all_objects_with_low_opacity.tiff")
 
         self.finished.emit()
+
+
+class FindDisconnectedRegionsWorker(QThread):
+    progress = pyqtSignal(int)
+    finished = pyqtSignal(dict)
+
+    def __init__(self, maskArray):
+        super().__init__()
+        self.maskArray = maskArray
+
+    def run(self):
+        disconnected_regions = find_disconnected_regions(self.maskArray)
+        self.finished.emit(disconnected_regions)

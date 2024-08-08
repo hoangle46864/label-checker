@@ -75,6 +75,12 @@
 - **Changes**:
   - Added support for multi-channel views.
 
+## Add find disconnected regions button
+
+- **Date**: 08-08-2024
+- **Changes**:
+  - Added find disconnected regions button for analyzing segmentation errors.
+
 ## Future Updates
 
 - **Plan**:
