@@ -2,32 +2,41 @@ import csv
 import os
 
 import numpy as np
+import pandas as pd
 from PIL import Image
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QFont, QPixmap, QTextCursor
+from PyQt5.QtGui import QColor, QFont, QKeySequence, QPixmap, QTextCursor
 from PyQt5.QtWidgets import (
+    QAction,
     QApplication,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QGraphicsPixmapItem,
     QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenuBar,
     QMessageBox,
     QProgressBar,
     QProgressDialog,
     QPushButton,
+    QShortcut,
+    QSizePolicy,
     QSlider,
     QSplitter,
+    QTableView,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from custom_graphics_view import CustomGraphicsView
+from tables import PandasModel
 from worker import FindDisconnectedRegionsWorker, Worker
 
 
@@ -161,6 +170,26 @@ class ImageViewer(QWidget):
         self.setWindowTitle("Image and Mask Viewer")
         self.setGeometry(300, 300, 1200, 800)
 
+        # Create a menu bar
+        menubar = QMenuBar(self)
+        # Set the menu bar
+        self.layout().setMenuBar(menubar)
+
+        # Create a "File" menu
+        fileMenu = menubar.addMenu("File")
+
+        # Add action to preview the objectState
+        previewObjectStateAction = QAction("Preview Object State", self)
+        previewObjectStateAction.triggered.connect(self.previewObjectState)
+        fileMenu.addAction(previewObjectStateAction)
+        # Create the "Add Shortcuts" menu
+        addShortcutsMenu = menubar.addMenu("Add Shortcuts")
+
+        # Create the "Mark Object No With Predefined Reason" action
+        markNoAction = QAction("Mark Object No With Predefined Reason", self)
+        markNoAction.triggered.connect(self.createShortcutDialog)
+        addShortcutsMenu.addAction(markNoAction)
+
         self.show()
 
         self.imagePath = ""
@@ -176,6 +205,36 @@ class ImageViewer(QWidget):
         self.objectState["Note"] = []
 
         self.noteNonLabel = []
+
+    # Method to open the dialog for creating a shortcut
+    def createShortcutDialog(self):
+        key_sequence, ok = QInputDialog.getText(
+            self,
+            "Shortcut Key",
+            "Enter the shortcut key:",
+        )
+        if ok and key_sequence:
+            reason, ok = QInputDialog.getText(
+                self,
+                "Predefined Reason",
+                "Enter the reason:",
+            )
+            if ok and reason:
+                self.registerShortcut(key_sequence, reason)
+                QMessageBox.information(
+                    self,
+                    "Shortcut Added",
+                    f'Shortcut "{key_sequence}" added with reason: "{reason}"',
+                )
+
+    def registerShortcut(self, key_sequence, reason):
+        shortcut = QShortcut(QKeySequence(key_sequence), self)
+        shortcut.activated.connect(lambda: self.markObjectNoWithReason(reason))
+
+    def markObjectNoWithReason(self, reason):
+        self.insertState("No", reason)
+        self.updateObjectListColor(self.currentObjectIndex, "red")
+        self.updateQAProgressBar()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_D:
@@ -304,6 +363,49 @@ class ImageViewer(QWidget):
         self.labelNameMask.setText(self.maskPath)
         self.maskVisible = True
         self.imageView.setMouseTracking(True)
+
+    def previewObjectState(self):
+        # Convert objectState to a pandas DataFrame
+        df = pd.DataFrame(self.objectState)
+
+        # Append the `noteNonLabel` into the `Note` column of the DataFrame
+        df_note_non_label = pd.DataFrame({"Note": self.noteNonLabel})
+
+        df = pd.concat([df, df_note_non_label], axis=0)
+
+        # Create a QDialog to display the DataFrame
+        previewDialog = QDialog(self)
+        previewDialog.setWindowTitle("Object State Preview")
+        previewDialog.resize(800, 600)
+
+        layout = QVBoxLayout(previewDialog)
+
+        # Create a QTableView and set the PandasModel
+        tableView = QTableView(previewDialog)
+        model = PandasModel(df)
+        tableView.setModel(model)
+
+        # Set column width and row height
+        tableView.horizontalHeader().setDefaultSectionSize(150)
+        tableView.verticalHeader().setDefaultSectionSize(30)
+
+        # Enable horizontal and vertical stretching
+        tableView.horizontalHeader().setStretchLastSection(True)
+        tableView.verticalHeader().setSectionResizeMode(QHeaderView.Stretch)
+
+        # Set the size policy to make the table view resizable
+        tableView.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        layout.addWidget(tableView)
+
+        # Add an OK button to close the dialog
+        btnBox = QDialogButtonBox(QDialogButtonBox.Ok, previewDialog)
+        btnBox.accepted.connect(previewDialog.accept)
+        layout.addWidget(btnBox)
+
+        previewDialog.setLayout(layout)
+        previewDialog.setSizeGripEnabled(True)  # Enable resizing
+        previewDialog.exec_()
 
     def saveInfo(self):
         default_file_name = (

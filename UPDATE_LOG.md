@@ -81,6 +81,13 @@
 - **Changes**:
   - Added find disconnected regions button for analyzing segmentation errors.
 
+## Add object state preview and add shortcut to mark No with predefined reasons
+
+- **Date**: 11-08-2024
+- **Changes**:
+  - Added shortcut to mark object as `No` with a predefined reason.
+  - Added Object State Preview as a DataFrame for preview before saving.
+
 ## Future Updates
 
 - **Plan**:
