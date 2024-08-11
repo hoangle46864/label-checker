@@ -232,6 +232,8 @@ class ImageViewer(QWidget):
         shortcut.activated.connect(lambda: self.markObjectNoWithReason(reason))
 
     def markObjectNoWithReason(self, reason):
+        # Add coordinates before reason
+        reason = f"({self.coordinateLabel.text()}) - " + reason
         self.insertState("No", reason)
         self.updateObjectListColor(self.currentObjectIndex, "red")
         self.updateQAProgressBar()
@@ -575,7 +577,8 @@ class ImageViewer(QWidget):
 
     def noForNonLabel(self):
         reason = self.getReason()
-        self.noteNonLabel.append(reason)
+        if reason != "":
+            self.noteNonLabel.append(reason)
 
     def markObjectYes(self):
         reason = ""
