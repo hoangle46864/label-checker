@@ -198,53 +198,49 @@ class CustomGraphicsView(ImageView):
         # For brush_size 1, just draw a single pixel
         if brush_size == 1:
             if self.isValidPoint(x, y):
-                self.parent.maskArray[y, x] = (
-                    current_object if self.drawMode in ["draw", "new"] else 0
-                )
-            return
+                # Only erase if the pixel belongs to current object
+                if self.drawMode == "erase":
+                    if self.parent.maskArray[y, x] == current_object:
+                        self.parent.maskArray[y, x] = 0
+                else:  # draw or new mode
+                    self.parent.maskArray[y, x] = current_object
+        else:
+            # Create a circular brush using distance calculation
+            radius = brush_size / 2
+            y_indices, x_indices = np.ogrid[-radius : radius + 1, -radius : radius + 1]
+            distances = np.sqrt(x_indices * x_indices + y_indices * y_indices)
+            mask = distances <= radius
 
-        # For larger brushes, create a circular brush
-        radius = brush_size // 2
-        y_indices, x_indices = np.ogrid[-radius : radius + 1, -radius : radius + 1]
-        # Create circular mask
-        mask = x_indices * x_indices + y_indices * y_indices <= radius * radius
+            # Get bounds for the brush area
+            y_min, y_max = int(y - radius), int(y + radius + 1)
+            x_min, x_max = int(x - radius), int(x + radius + 1)
 
-        # Create a circular brush using distance calculation
-        radius = brush_size / 2
-        y_indices, x_indices = np.ogrid[-radius : radius + 1, -radius : radius + 1]
-        distances = np.sqrt(x_indices * x_indices + y_indices * y_indices)
-        mask = distances <= radius
+            # Clip bounds to image size
+            y_min = max(0, y_min)
+            y_max = min(self.parent.maskArray.shape[0], y_max)
+            x_min = max(0, x_min)
+            x_max = min(self.parent.maskArray.shape[1], x_max)
 
-        # Get bounds for the brush area
-        y_min, y_max = int(y - radius), int(y + radius + 1)
-        x_min, x_max = int(x - radius), int(x + radius + 1)
+            # Calculate mask indices after clipping
+            mask_y_start = y_min - int(y - radius)
+            mask_y_end = mask_y_start + (y_max - y_min)
+            mask_x_start = x_min - int(x - radius)
+            mask_x_end = mask_x_start + (x_max - x_min)
 
-        # Clip bounds to image size
-        y_min = max(0, y_min)
-        y_max = min(self.parent.maskArray.shape[0], y_max)
-        x_min = max(0, x_min)
-        x_max = min(self.parent.maskArray.shape[1], x_max)
+            # Get the region we're working with
+            region = self.parent.maskArray[y_min:y_max, x_min:x_max]
+            brush_mask = mask[mask_y_start:mask_y_end, mask_x_start:mask_x_end]
 
-        # Calculate mask indices after clipping
-        mask_y_start = y_min - int(y - radius)
-        mask_y_end = mask_y_start + (y_max - y_min)
-        mask_x_start = x_min - int(x - radius)
-        mask_x_end = mask_x_start + (x_max - x_min)
-
-        # Apply the mask
-        if self.drawMode in ["draw", "new"]:
-            self.parent.maskArray[y_min:y_max, x_min:x_max][
-                mask[mask_y_start:mask_y_end, mask_x_start:mask_x_end]
-            ] = current_object
-        else:  # erase mode
-            self.parent.maskArray[y_min:y_max, x_min:x_max][
-                mask[mask_y_start:mask_y_end, mask_x_start:mask_x_end]
-            ] = 0
+            if self.drawMode in ["draw", "new"]:
+                # For drawing, simply apply the mask
+                region[brush_mask] = current_object
+            else:  # erase mode
+                # Create a mask that only affects pixels of the current object
+                erase_mask = brush_mask & (region == current_object)
+                region[erase_mask] = 0
 
         # Update pixel count for the object
-        mask_sum = np.sum(
-            self.parent.maskArray == current_object,
-        )
+        mask_sum = np.sum(self.parent.maskArray == current_object)
         self.parent.objectPixelCount[current_object] = mask_sum
         # Update list item text
         item = self.parent.objectList.item(self.parent.currentObjectIndex)
