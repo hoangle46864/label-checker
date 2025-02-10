@@ -95,8 +95,8 @@ class ImageViewer(QWidget):
 
         self.btnNext = QPushButton("Next Object", self)
         self.btnNext.clicked.connect(self.nextObject)
-        rightLayout.addWidget(self.btnNext)
         self.btnNext.setDisabled(True)
+        rightLayout.addWidget(self.btnNext)
 
         self.btnPre = QPushButton("Previous Object", self)
         self.btnPre.clicked.connect(self.previousObject)
@@ -164,6 +164,61 @@ class ImageViewer(QWidget):
         sliderLayout.addWidget(self.transparencySlider)
         rightLayout.addLayout(sliderLayout)
 
+        # Create Edit Mode Pane
+        editPaneWidget = QWidget()
+        editPaneLayout = QVBoxLayout()
+        editPaneWidget.setLayout(editPaneLayout)
+
+        editPaneLabel = QLabel("Edit Mode Controls")
+        editPaneLabel.setStyleSheet("font-weight: bold; font-size: 14px;")
+        editPaneLayout.addWidget(editPaneLabel)
+
+        # Edit mode toggle button
+        self.btnEdit = QPushButton("Toggle Edit Mode", self)
+        self.btnEdit.clicked.connect(self.toggleEditMode)
+        editPaneLayout.addWidget(self.btnEdit)
+
+        # Tool selection
+        toolLayout = QHBoxLayout()
+        self.btnDraw = QPushButton("Draw", self)
+        self.btnDraw.setCheckable(True)
+        self.btnDraw.setChecked(True)
+        self.btnDraw.clicked.connect(lambda: self.setDrawMode("draw"))
+
+        self.btnErase = QPushButton("Erase", self)
+        self.btnErase.setCheckable(True)
+        self.btnErase.clicked.connect(lambda: self.setDrawMode("erase"))
+
+        toolLayout.addWidget(self.btnDraw)
+        toolLayout.addWidget(self.btnErase)
+        editPaneLayout.addLayout(toolLayout)
+
+        # Brush size control
+        self.btnBrushSize = QPushButton("Change Brush Size", self)
+        self.btnBrushSize.clicked.connect(self.changeBrushSize)
+        editPaneLayout.addWidget(self.btnBrushSize)
+
+        # Undo button
+        self.btnUndo = QPushButton("Undo Edit", self)
+        self.btnUndo.clicked.connect(self.undoLastEdit)
+        editPaneLayout.addWidget(self.btnUndo)
+
+        # Save mask button
+        self.btnSaveMask = QPushButton("Save Edited Mask", self)
+        self.btnSaveMask.clicked.connect(self.saveMask)
+        editPaneLayout.addWidget(self.btnSaveMask)
+
+        # Add edit pane to right layout
+        rightLayout.addWidget(editPaneWidget)
+
+        # Disable edit controls initially
+        self.btnDraw.setDisabled(True)
+        self.btnErase.setDisabled(True)
+        self.btnBrushSize.setDisabled(True)
+        self.btnUndo.setDisabled(True)
+        self.btnSaveMask.setDisabled(True)
+        self.btnEdit.setDisabled(True)
+
         mainLayout.addWidget(splitter)
         self.setLayout(mainLayout)
 
@@ -205,6 +260,11 @@ class ImageViewer(QWidget):
         self.objectState["Note"] = []
 
         self.noteNonLabel = []
+
+        self.editMode = False
+        self.lastPoint = None
+        self.undoStack = []
+        self.currentBrushSize = 5
 
     # Method to open the dialog for creating a shortcut
     def createShortcutDialog(self):
@@ -360,6 +420,12 @@ class ImageViewer(QWidget):
         self.btnloadInfo.setDisabled(False)
         self.btnNoForNonLabel.setDisabled(False)
         self.btnFindDisconnected.setDisabled(False)
+        self.btnEdit.setDisabled(False)
+        self.btnSaveMask.setDisabled(False)
+        self.btnUndo.setDisabled(False)
+        self.btnBrushSize.setDisabled(False)
+        self.btnDraw.setDisabled(False)
+        self.btnErase.setDisabled(False)
 
         self.labelNameImage.setText(self.imagePath)
         self.labelNameMask.setText(self.maskPath)
@@ -626,26 +692,43 @@ class ImageViewer(QWidget):
                 self.pixelDead.append(obj)
 
     def changeMask(self):
+        """Update the display when selecting a new object"""
         # Get the current object
         current_object = self.objects[self.currentObjectIndex]
 
-        # Create a mask clone for the current object
-        maskClone = np.where(self.maskArray == current_object, current_object, 0)
+        if self.editMode:
+            # In edit mode, use the same display style as updateMaskDisplay
+            maskClone = np.where(self.maskArray == current_object, current_object, 0)
 
-        # Create an RGBA image with the same size as the mask
-        outputImage = np.zeros(
-            (maskClone.shape[0], maskClone.shape[1], 4),
-            dtype=np.uint8,
-        )
+            # Create RGBA image
+            outputImage = np.zeros(
+                (maskClone.shape[0], maskClone.shape[1], 4),
+                dtype=np.uint8,
+            )
 
-        # Set the color of the current object
-        color = self.worker.objectColors[current_object]
-        outputImage[maskClone != 0] = [*color, 255]  # Set RGBA with full opacity
+            # Set the color
+            if hasattr(self, "worker"):
+                color = self.worker.objectColors[current_object]
+                outputImage[maskClone != 0] = [*color, 255]
+        else:
+            # Simply use the existing color map from worker
+            if hasattr(self, "worker"):
+                # Update maskImageArray with current maskArray state using existing color map
+                self.worker.maskImageArray = self.worker.color_map[
+                    self.maskArray.astype(int)
+                ]
 
-        # Create an image from the mask array
+            # Use updated maskImageArray for display
+            highlightedMaskArray = self.worker.maskImageArray.copy()
+            # Set opacity for all objects to medium (128)
+            highlightedMaskArray[self.maskArray != 0, 3] = 128
+            # Set opacity for selected object to full (255)
+            highlightedMaskArray[self.maskArray == current_object, 3] = 255
+            outputImage = highlightedMaskArray
+
+        # Create an image from the array
         img = Image.fromarray(outputImage, "RGBA")
         img.save("output_image.tiff", compression="tiff_lzw")
-        self.imageMaskClone = img
 
         # Remove existing mask items if present
         if hasattr(self, "maskItem"):
@@ -663,6 +746,7 @@ class ImageViewer(QWidget):
         self.maskVisible = True
 
         # Scale to the object
+        maskClone = np.where(self.maskArray == current_object, current_object, 0)
         self.scaleToObject(maskClone)
 
     def previousObject(self):
@@ -725,6 +809,7 @@ class ImageViewer(QWidget):
         self.imageView.drawBoundingBox(self.objects[index])
 
     def highlightObjectAtPoint(self, point):
+        """Highlight object under mouse cursor"""
         x, y = int(point.x()), int(point.y())
         if (
             x >= 0
@@ -733,38 +818,38 @@ class ImageViewer(QWidget):
             and y < self.maskArray.shape[0]
             and self.maskVisible
         ):
+
             obj = self.maskArray[y, x]
-            # print(f"Highlighting object: {obj}")
             if obj != 0:
-                self.highlightSingleObject(obj)
+                # Create a copy of the original mask image array
+                highlightedMaskArray = self.worker.maskImageArray.copy()
 
-    def highlightSingleObject(self, obj):
-        # Create a copy of the original mask image with low opacity
-        highlightedMaskArray = self.worker.maskImageArray.copy()
+                # Set medium opacity (128) for all objects
+                highlightedMaskArray[self.maskArray != 0, 3] = 128
 
-        # Find indices of the hovered object
-        mask_indices = self.maskArray == obj
+                # Set full opacity (255) for hovered object
+                highlightedMaskArray[self.maskArray == obj, 3] = 255
 
-        # Set the opacity of the hovered object to max
-        highlightedMaskArray[mask_indices, 3] = 255
-        # Set the opacity of the other objects to min
-        # highlightedMaskArray[~mask_indices, 3] = 0
+                # If there's a selected object, also keep it at full opacity
+                current_object = self.objects[self.currentObjectIndex]
+                if obj != current_object:
+                    highlightedMaskArray[self.maskArray == current_object, 3] = 255
 
-        # Create an image from the updated mask array
-        highlightedMaskImage = Image.fromarray(highlightedMaskArray, "RGBA")
-        highlightedMaskImage.save(
-            "highlighted_single_object.tiff",
-            compression="tiff_lzw",
-        )
+                # Create an image from the mask array
+                highlightedMaskImage = Image.fromarray(highlightedMaskArray, "RGBA")
+                highlightedMaskImage.save(
+                    "highlighted_single_object.tiff",
+                    compression="tiff_lzw",
+                )
 
-        if hasattr(self, "singleMaskItem"):
-            self.imageView.removeItem(self.singleMaskItem)
-            del self.singleMaskItem
+                if hasattr(self, "singleMaskItem"):
+                    self.imageView.removeItem(self.singleMaskItem)
+                    del self.singleMaskItem
 
-        self.singleMaskPixmap = QPixmap("highlighted_single_object.tiff")
-        self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
-        self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
-        self.imageView.addItem(self.singleMaskItem)
+                self.singleMaskPixmap = QPixmap("highlighted_single_object.tiff")
+                self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
+                self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
+                self.imageView.addItem(self.singleMaskItem)
 
     def closeEvent(self, event):
         if not self.savedLabel:
@@ -842,3 +927,83 @@ class ImageViewer(QWidget):
             "Info",
             "Disconnected regions analysis completed.",
         )
+
+    def toggleEditMode(self):
+        self.editMode = not self.editMode
+        self.imageView.setEditMode(self.editMode)
+        self.btnEdit.setStyleSheet(
+            "background-color: #90EE90;" if self.editMode else "",
+        )
+
+        # Refresh the display when toggling edit mode
+        if hasattr(self, "maskArray"):
+            self.changeMask()
+
+    def saveMask(self):
+        if hasattr(self, "maskArray"):
+            savePath, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Mask",
+                os.path.splitext(self.maskPath)[0] + "_edited.tiff",
+                "TIFF files (*.tiff *.tif)",
+            )
+            if savePath:
+                Image.fromarray(self.maskArray).save(savePath)
+                QMessageBox.information(self, "Success", "Mask saved successfully!")
+
+    def changeBrushSize(self):
+        size, ok = QInputDialog.getInt(
+            self,
+            "Brush Size",
+            "Enter brush size (pixels):",
+            self.currentBrushSize,
+            1,
+            50,
+        )
+        if ok:
+            self.currentBrushSize = size
+            self.imageView.updateCursor()
+
+    def undoLastEdit(self):
+        if self.undoStack:
+            self.maskArray = self.undoStack.pop()
+            self.changeMask()  # Refresh the display
+
+    def updateMaskDisplay(self):
+        """Update the mask display in real-time during editing"""
+        if hasattr(self, "singleMaskItem"):
+            self.imageView.removeItem(self.singleMaskItem)
+
+        # Create a mask for the current object
+        current_object = self.objects[self.currentObjectIndex]
+        maskClone = np.where(self.maskArray == current_object, current_object, 0)
+
+        # Create RGBA image
+        outputImage = np.zeros(
+            (maskClone.shape[0], maskClone.shape[1], 4),
+            dtype=np.uint8,
+        )
+
+        # Set the color
+        if hasattr(self, "worker"):
+            color = self.worker.objectColors[current_object]
+            outputImage[maskClone != 0] = [*color, 255]
+
+        # Save and display
+        img = Image.fromarray(outputImage, "RGBA")
+        img.save("output_image.tiff", compression="tiff_lzw")
+
+        self.singleMaskPixmap = QPixmap("output_image.tiff")
+        self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
+        self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
+        self.imageView.addItem(self.singleMaskItem)
+
+    def setDrawMode(self, mode):
+        if mode == "draw":
+            self.btnDraw.setChecked(True)
+            self.btnErase.setChecked(False)
+            self.imageView.setDrawMode("draw")
+        else:  # erase mode
+            self.btnDraw.setChecked(False)
+            self.btnErase.setChecked(True)
+            self.imageView.setDrawMode("erase")

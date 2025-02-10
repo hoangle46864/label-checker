@@ -6,3 +6,8 @@ test_data
 # Cache
 __pycache__
 *.pyc
+
+# Notebooks
+notebooks
+
+backups

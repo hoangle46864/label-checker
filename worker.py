@@ -19,6 +19,7 @@ class Worker(QThread):
         self.objects = objects
         self.objectColors = {}
         self.maskImageArray = None
+        self.color_map = None
 
     def run(self):
         height, width = self.maskArray.shape
@@ -29,6 +30,7 @@ class Worker(QThread):
         if unique_labels.size == 0:
             # Return a blank RGBA image if there are no unique labels
             self.maskImageArray = np.zeros((height, width, 4), dtype=np.uint8)
+            self.color_map = np.zeros((1, 4), dtype=np.uint8)
         else:
             # Generate random colors for each unique label
             max_label = int(unique_labels.max())  # Convert to integer
@@ -45,10 +47,10 @@ class Worker(QThread):
 
             alpha_channel = np.full((colors.shape[0], 1), 128, dtype=np.uint8)
             alpha_channel[0] = 0
-            color_map = np.concatenate((colors, alpha_channel), axis=1)
+            self.color_map = np.concatenate((colors, alpha_channel), axis=1)
 
             # Create a color-mapped image
-            self.maskImageArray = color_map[self.maskArray.astype(int)]
+            self.maskImageArray = self.color_map[self.maskArray.astype(int)]
 
         maskImage = Image.fromarray(self.maskImageArray, "RGBA")
         maskImage.save("all_objects_with_low_opacity.tiff")
