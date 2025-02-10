@@ -189,8 +189,14 @@ class ImageViewer(QWidget):
         self.btnErase.setCheckable(True)
         self.btnErase.clicked.connect(lambda: self.setDrawMode("erase"))
 
+        self.btnNewObject = QPushButton("New Object", self)
+        self.btnNewObject.setCheckable(True)
+        self.btnNewObject.clicked.connect(lambda: self.setDrawMode("new"))
+        self.btnNewObject.setDisabled(True)
+
         toolLayout.addWidget(self.btnDraw)
         toolLayout.addWidget(self.btnErase)
+        toolLayout.addWidget(self.btnNewObject)
         editPaneLayout.addLayout(toolLayout)
 
         # Brush size control
@@ -422,10 +428,6 @@ class ImageViewer(QWidget):
         self.btnFindDisconnected.setDisabled(False)
         self.btnEdit.setDisabled(False)
         self.btnSaveMask.setDisabled(False)
-        self.btnUndo.setDisabled(False)
-        self.btnBrushSize.setDisabled(False)
-        self.btnDraw.setDisabled(False)
-        self.btnErase.setDisabled(False)
 
         self.labelNameImage.setText(self.imagePath)
         self.labelNameMask.setText(self.maskPath)
@@ -935,9 +937,17 @@ class ImageViewer(QWidget):
             "background-color: #90EE90;" if self.editMode else "",
         )
 
+        # Enable/disable edit controls based on edit mode
+        self.btnDraw.setDisabled(not self.editMode)
+        self.btnErase.setDisabled(not self.editMode)
+        self.btnNewObject.setDisabled(not self.editMode)
+        self.btnBrushSize.setDisabled(not self.editMode)
+        self.btnUndo.setDisabled(not self.editMode)
+
         # Refresh the display when toggling edit mode
         if hasattr(self, "maskArray"):
             self.changeMask()
+            self.imageView.drawBoundingBox(self.objects[self.currentObjectIndex])
 
     def saveMask(self):
         if hasattr(self, "maskArray"):
@@ -948,7 +958,10 @@ class ImageViewer(QWidget):
                 "TIFF files (*.tiff *.tif)",
             )
             if savePath:
-                Image.fromarray(self.maskArray).save(savePath)
+                Image.fromarray(self.maskArray.astype(np.float32)).save(
+                    savePath,
+                    compression="tiff_lzw",
+                )
                 QMessageBox.information(self, "Success", "Mask saved successfully!")
 
     def changeBrushSize(self):
@@ -1002,8 +1015,63 @@ class ImageViewer(QWidget):
         if mode == "draw":
             self.btnDraw.setChecked(True)
             self.btnErase.setChecked(False)
+            self.btnNewObject.setChecked(False)
             self.imageView.setDrawMode("draw")
-        else:  # erase mode
+        elif mode == "erase":
             self.btnDraw.setChecked(False)
-            self.btnErase.setChecked(True)
+            self.btnNewObject.setChecked(False)
             self.imageView.setDrawMode("erase")
+        else:  # new object mode
+            self.btnDraw.setChecked(False)
+            self.btnErase.setChecked(False)
+            self.btnNewObject.setChecked(True)
+            self.imageView.setDrawMode("new")
+            self.createNewObject()
+
+    def createNewObject(self):
+        # Safely remove current mask item and bounding box
+        if hasattr(self, "singleMaskItem"):
+            if self.singleMaskItem.scene():  # Check if item has a scene
+                self.singleMaskItem.scene().removeItem(self.singleMaskItem)
+            delattr(self, "singleMaskItem")  # Clean up the reference
+
+        if self.imageView.boundingBox:
+            if self.imageView.boundingBox.scene():  # Check if item has a scene
+                self.imageView.boundingBox.scene().removeItem(
+                    self.imageView.boundingBox,
+                )
+            self.imageView.boundingBox = None  # Clean up the reference
+
+        # Generate new object ID (max + 1)
+        if len(self.objects) > 0:
+            new_obj_id = int(max(self.objects)) + 1
+        else:
+            new_obj_id = 1
+
+        # Add to objects list
+        self.objects = np.append(self.objects, new_obj_id)
+
+        # Generate random color for new object
+        new_color = np.random.randint(0, 256, size=3, dtype=np.uint8)
+        self.worker.objectColors[new_obj_id] = new_color
+
+        # Update color map
+        alpha_channel = np.full((1, 1), 128, dtype=np.uint8)
+        new_color_with_alpha = np.concatenate(
+            (new_color.reshape(1, 3), alpha_channel),
+            axis=1,
+        )
+        if self.worker.color_map.shape[0] <= new_obj_id:
+            pad_size = new_obj_id - self.worker.color_map.shape[0] + 1
+            padding = np.zeros((pad_size, 4), dtype=np.uint8)
+            self.worker.color_map = np.vstack([self.worker.color_map, padding])
+        self.worker.color_map[new_obj_id] = new_color_with_alpha
+
+        # Add to object list widget
+        self.objectPixelCount[new_obj_id] = 0
+        item = QListWidgetItem(f"Object {new_obj_id}: 0 pixels")
+        self.objectList.addItem(item)
+
+        # Select the new object
+        self.objectList.setCurrentRow(len(self.objects) - 1)
+        self.currentObjectIndex = len(self.objects) - 1

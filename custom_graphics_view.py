@@ -131,7 +131,7 @@ class CustomGraphicsView(ImageView):
     def setEditMode(self, enabled):
         self.editMode = enabled
         self.view.editMode = enabled
-        self.updateCursor()  # Replace cursor setting with this
+        self.updateCursor()
 
     def drawBoundingBox(self, obj_id):
         if self.boundingBox:
@@ -199,7 +199,7 @@ class CustomGraphicsView(ImageView):
         if brush_size == 1:
             if self.isValidPoint(x, y):
                 self.parent.maskArray[y, x] = (
-                    current_object if self.drawMode == "draw" else 0
+                    current_object if self.drawMode in ["draw", "new"] else 0
                 )
             return
 
@@ -232,7 +232,7 @@ class CustomGraphicsView(ImageView):
         mask_x_end = mask_x_start + (x_max - x_min)
 
         # Apply the mask
-        if self.drawMode == "draw":
+        if self.drawMode in ["draw", "new"]:
             self.parent.maskArray[y_min:y_max, x_min:x_max][
                 mask[mask_y_start:mask_y_end, mask_x_start:mask_x_end]
             ] = current_object
@@ -240,6 +240,18 @@ class CustomGraphicsView(ImageView):
             self.parent.maskArray[y_min:y_max, x_min:x_max][
                 mask[mask_y_start:mask_y_end, mask_x_start:mask_x_end]
             ] = 0
+
+        # Update pixel count for the object
+        mask_sum = np.sum(
+            self.parent.maskArray == current_object,
+        )
+        self.parent.objectPixelCount[current_object] = mask_sum
+        # Update list item text
+        item = self.parent.objectList.item(self.parent.currentObjectIndex)
+        if item:
+            item.setText(
+                f"Object {int(current_object)}: {self.parent.objectPixelCount[current_object]} pixels",
+            )
 
     def drawLine(self, x1, y1, x2, y2):
         # Bresenham's line algorithm
