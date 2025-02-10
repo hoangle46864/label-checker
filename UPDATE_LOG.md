@@ -15,7 +15,7 @@
 
 ## Separation into Multiple Modules
 
-- **Date**: 19-06-2024
+- **Date**: 12-06-2024
 - **Modules Created**:
   - `custom_graphics_view.py`
   - `image_viewer.py`
@@ -68,6 +68,25 @@
   - Improved user experience by ensuring coordinates are included in rejection reasons.
 
 ---
+
+## Add multi channel views
+
+- **Date**: 06-07-2024
+- **Changes**:
+  - Added support for multi-channel views.
+
+## Add find disconnected regions button
+
+- **Date**: 08-08-2024
+- **Changes**:
+  - Added find disconnected regions button for analyzing segmentation errors.
+
+## Add object state preview and add shortcut to mark No with predefined reasons
+
+- **Date**: 11-08-2024
+- **Changes**:
+  - Added shortcut to mark object as `No` with a predefined reason.
+  - Added Object State Preview as a DataFrame for preview before saving.
 
 ## Future Updates
 

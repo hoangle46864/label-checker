@@ -32,10 +32,10 @@ Sử dụng các nút giao diện để thực hiện các chức năng:
 - **Thanh trượt**: Trượt tới hoặc lui để tăng hoặc giảm độ trong suốt của label
 - **Crtl + lăn chuột**: Phóng to thu nhỏ ảnh
 
-![Ảnh một tiến trình](https://i.imgur.com/dO5GXmW.png)  
-Object có màu **xanh**: Label có chất lượng tốt  
-Object có màu **đỏ**: Label có chất lượng kém  
-Object có màu **trắng**: Chưa được kiểm tra  
+![Ảnh một tiến trình](https://i.imgur.com/dO5GXmW.png)
+Object có màu **xanh**: Label có chất lượng tốt
+Object có màu **đỏ**: Label có chất lượng kém
+Object có màu **trắng**: Chưa được kiểm tra
 Object **đang kiểm tra**: Object có số thứ tự bên dưới nút `Load Progress`
 
 ### Thao tác bằng bàn phím

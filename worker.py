@@ -1,29 +1,68 @@
-from PyQt5.QtCore import QObject, pyqtSignal
+from __future__ import annotations
+
 import numpy as np
-from PIL import Image
+from PyQt5.QtCore import QThread, pyqtSignal
+
+from utils import find_disconnected_regions
 
 
-class Worker(QObject):
+class Worker(QThread):
     finished = pyqtSignal()
     progress = pyqtSignal(int)
 
-    def __init__(self, maskArray, objects):
-        super().__init__()
+    def __init__(self, maskArray, objects, parent=None):
+        super().__init__(parent)
+        if maskArray is None or objects is None:
+            raise ValueError("Mask array and objects cannot be None")
         self.maskArray = maskArray
         self.objects = objects
         self.objectColors = {}
+        self.maskImageArray = None
+        self.color_map = None
 
     def run(self):
         height, width = self.maskArray.shape
-        self.maskImageArray = np.zeros((height, width, 4), dtype=np.uint8)
 
-        for i, obj in enumerate(self.objects):
-            color = (np.random.randint(256), np.random.randint(256), np.random.randint(256))
-            self.objectColors[obj] = color
-            self.maskImageArray[self.maskArray == obj] = (*color, 128)  # RGBA with low opacity
-            self.progress.emit(int((i + 1) / len(self.objects) * 100))
+        unique_labels = np.unique(self.maskArray).astype(int)
+        unique_labels = unique_labels[unique_labels != 0]  # Remove background label 0
 
-        maskImage = Image.fromarray(self.maskImageArray, "RGBA")
-        maskImage.save("all_objects_with_low_opacity.tiff")
+        if unique_labels.size == 0:
+            # Return a blank RGBA image if there are no unique labels
+            self.maskImageArray = np.zeros((height, width, 4), dtype=np.uint8)
+            self.color_map = np.zeros((1, 4), dtype=np.uint8)
+        else:
+            # Generate random colors for each unique label
+            max_label = int(unique_labels.max())  # Convert to integer
+            colors = np.random.randint(0, 256, size=(max_label + 1, 3), dtype=np.uint8)
+
+            # Ensure the background (label 0) is black
+            colors[0] = [0, 0, 0]
+
+            # Store the color for each object from the colors array
+            for i, obj in enumerate(self.objects):
+                obj = int(obj)
+                self.objectColors[obj] = colors[obj]
+                self.progress.emit(int((i + 1) / len(self.objects) * 100))
+
+            alpha_channel = np.full((colors.shape[0], 1), 128, dtype=np.uint8)
+            alpha_channel[0] = 0
+            self.color_map = np.concatenate((colors, alpha_channel), axis=1)
+
+            # Create a color-mapped image
+            self.maskImageArray = self.color_map[self.maskArray.astype(int)]
 
         self.finished.emit()
+
+
+class FindDisconnectedRegionsWorker(QThread):
+    progress = pyqtSignal(int)
+    finished = pyqtSignal(dict)
+
+    def __init__(self, maskArray, pixelDead):
+        super().__init__()
+        self.maskArray = maskArray
+        self.pixelDead = pixelDead
+
+    def run(self):
+        disconnected_regions = find_disconnected_regions(self.maskArray, self.pixelDead)
+        self.finished.emit(disconnected_regions)
