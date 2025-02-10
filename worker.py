@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-from PIL import Image
 from PyQt5.QtCore import QThread, pyqtSignal
 
 from utils import find_disconnected_regions
@@ -51,9 +50,6 @@ class Worker(QThread):
 
             # Create a color-mapped image
             self.maskImageArray = self.color_map[self.maskArray.astype(int)]
-
-        maskImage = Image.fromarray(self.maskImageArray, "RGBA")
-        maskImage.save("all_objects_with_low_opacity.tiff")
 
         self.finished.emit()
 

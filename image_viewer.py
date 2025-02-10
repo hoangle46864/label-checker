@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QFont, QKeySequence, QPixmap, QTextCursor
+from PyQt5.QtGui import QColor, QFont, QImage, QKeySequence, QPixmap, QTextCursor
 from PyQt5.QtWidgets import (
     QAction,
     QApplication,
@@ -409,7 +409,17 @@ class ImageViewer(QWidget):
         self.pixelDead = []
 
         # Display the mask image
-        self.maskPixmap = QPixmap("all_objects_with_low_opacity.tiff")
+        qimage = self.worker.maskImageArray.copy()
+        height, width, channel = qimage.shape
+        bytesPerLine = 4 * width
+        qimage = QImage(
+            qimage.data,
+            width,
+            height,
+            bytesPerLine,
+            QImage.Format_RGBA8888,
+        )
+        self.maskPixmap = QPixmap.fromImage(qimage)
         self.maskItem = QGraphicsPixmapItem(self.maskPixmap)
         self.maskItem.setOpacity(self.transparencySlider.value() / 100)
         self.imageView.addItem(self.maskItem)
@@ -712,6 +722,17 @@ class ImageViewer(QWidget):
             if hasattr(self, "worker"):
                 color = self.worker.objectColors[current_object]
                 outputImage[maskClone != 0] = [*color, 255]
+
+            # Convert numpy array to QImage directly
+            height, width, channel = outputImage.shape
+            bytesPerLine = 4 * width
+            qimage = QImage(
+                outputImage.data,
+                width,
+                height,
+                bytesPerLine,
+                QImage.Format_RGBA8888,
+            )
         else:
             # Simply use the existing color map from worker
             if hasattr(self, "worker"):
@@ -726,11 +747,17 @@ class ImageViewer(QWidget):
             highlightedMaskArray[self.maskArray != 0, 3] = 128
             # Set opacity for selected object to full (255)
             highlightedMaskArray[self.maskArray == current_object, 3] = 255
-            outputImage = highlightedMaskArray
 
-        # Create an image from the array
-        img = Image.fromarray(outputImage, "RGBA")
-        img.save("output_image.tiff", compression="tiff_lzw")
+            # Convert numpy array to QImage directly
+            height, width, channel = highlightedMaskArray.shape
+            bytesPerLine = 4 * width
+            qimage = QImage(
+                highlightedMaskArray.data,
+                width,
+                height,
+                bytesPerLine,
+                QImage.Format_RGBA8888,
+            )
 
         # Remove existing mask items if present
         if hasattr(self, "maskItem"):
@@ -741,7 +768,7 @@ class ImageViewer(QWidget):
             del self.singleMaskItem
 
         # Display the new mask image
-        self.singleMaskPixmap = QPixmap("output_image.tiff")
+        self.singleMaskPixmap = QPixmap.fromImage(qimage)
         self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
         self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
         self.imageView.addItem(self.singleMaskItem)
@@ -820,7 +847,6 @@ class ImageViewer(QWidget):
             and y < self.maskArray.shape[0]
             and self.maskVisible
         ):
-
             obj = self.maskArray[y, x]
             if obj != 0:
                 # Create a copy of the original mask image array
@@ -837,18 +863,22 @@ class ImageViewer(QWidget):
                 if obj != current_object:
                     highlightedMaskArray[self.maskArray == current_object, 3] = 255
 
-                # Create an image from the mask array
-                highlightedMaskImage = Image.fromarray(highlightedMaskArray, "RGBA")
-                highlightedMaskImage.save(
-                    "highlighted_single_object.tiff",
-                    compression="tiff_lzw",
+                # Convert numpy array to QImage directly
+                height, width, channel = highlightedMaskArray.shape
+                bytesPerLine = 4 * width
+                qimage = QImage(
+                    highlightedMaskArray.data,
+                    width,
+                    height,
+                    bytesPerLine,
+                    QImage.Format_RGBA8888,
                 )
 
                 if hasattr(self, "singleMaskItem"):
                     self.imageView.removeItem(self.singleMaskItem)
                     del self.singleMaskItem
 
-                self.singleMaskPixmap = QPixmap("highlighted_single_object.tiff")
+                self.singleMaskPixmap = QPixmap.fromImage(qimage)
                 self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
                 self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
                 self.imageView.addItem(self.singleMaskItem)
@@ -1002,11 +1032,18 @@ class ImageViewer(QWidget):
             color = self.worker.objectColors[current_object]
             outputImage[maskClone != 0] = [*color, 255]
 
-        # Save and display
-        img = Image.fromarray(outputImage, "RGBA")
-        img.save("output_image.tiff", compression="tiff_lzw")
+        # Convert numpy array to QImage directly
+        height, width, channel = outputImage.shape
+        bytesPerLine = 4 * width
+        qimage = QImage(
+            outputImage.data,
+            width,
+            height,
+            bytesPerLine,
+            QImage.Format_RGBA8888,
+        )
 
-        self.singleMaskPixmap = QPixmap("output_image.tiff")
+        self.singleMaskPixmap = QPixmap.fromImage(qimage)
         self.singleMaskItem = QGraphicsPixmapItem(self.singleMaskPixmap)
         self.singleMaskItem.setOpacity(self.transparencySlider.value() / 100)
         self.imageView.addItem(self.singleMaskItem)
