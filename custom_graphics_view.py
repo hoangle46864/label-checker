@@ -1,7 +1,7 @@
 import numpy as np
 from PyQt5.QtCore import QRectF, Qt
 from PyQt5.QtGui import QColor, QCursor, QPainter, QPen, QPixmap
-from PyQt5.QtWidgets import QGraphicsRectItem
+from PyQt5.QtWidgets import QGraphicsEllipseItem, QGraphicsRectItem
 from pyqtgraph import ImageView, ViewBox
 
 
@@ -33,6 +33,7 @@ class CustomViewBox(ViewBox):
                     self.isDrawing = False
                     self.lastPoint = None
                     self.parent_view.parent.changeMask()
+                    self.parent_view.parent.setFocus()
                 else:  # Mouse move
                     if self.isDrawing and self.lastPoint is not None:
                         if self.parent_view.isValidPoint(x, y):
@@ -64,30 +65,107 @@ class CustomGraphicsView(ImageView):
         self.setMouseTracking(True)
         self.boundingBox = None
         self.editMode = False
-        self.drawMode = "draw"  # or 'erase'
+        self.drawMode = "draw"  # or 'erase' or 'new'
         self.view.setCursor(Qt.ArrowCursor)
-        self.updateCursor()  # Add this line
+        self.brushPreview = None
+        self.updateCursor()
+
+        # Create a hover event handler for the image item
+        self.imageItem.hoverEvent = self.imageItemHoverEvent
+
+    def imageItemHoverEvent(self, ev):
+        """Handle hover events on the image item"""
+        if not ev.isExit() and self.editMode:
+            # Get position in scene coordinates
+            pos = ev.scenePos()
+            # Convert to view coordinates
+            point = self.view_box.mapSceneToView(pos)
+            x, y = point.x(), point.y()
+
+            # Update the brush preview on hover
+            self.updateBrushPreview(x, y)
+
+        elif ev.isExit() or not self.editMode:
+            # Remove the preview when mouse leaves or not in edit mode
+            self.removeBrushPreview()
+
+        # Let the event continue to propagate
+        # No need to call original handler as it will continue naturally
 
     def mouseMoveEvent(self, event):
         """Handle mouse movement"""
-        point = self.getView().mapSceneToView(event.pos())
-        x, y = int(point.x()), int(point.y())
+        # Get scene coordinates and map to view coordinates with floating point precision
+        point = self.view_box.mapSceneToView(event.scenePos())
+        # Use exact floating point position (not integers) for the preview
+        x, y = point.x(), point.y()
+
+        # But use integers for actual drawing and checking
+        x_int, y_int = int(x), int(y)
 
         if self.editMode:
+            # Update brush preview position using exact floating point coordinates
+            self.updateBrushPreview(x, y)
+
             # Handle drawing if mouse button is pressed
             if event.buttons() & Qt.LeftButton:
-                if self.isValidPoint(x, y):
+                if self.isValidPoint(x_int, y_int):
                     if self.lastPoint is not None:
-                        self.drawLine(self.lastPoint[0], self.lastPoint[1], x, y)
+                        self.drawLine(
+                            self.lastPoint[0],
+                            self.lastPoint[1],
+                            x_int,
+                            y_int,
+                        )
                         self.parent.updateMaskDisplay()
-                    self.lastPoint = (x, y)
+                    self.lastPoint = (x_int, y_int)
         else:
+            # Remove brush preview if not in edit mode
+            self.removeBrushPreview()
+
             # Handle hover selection in normal mode
-            if self.isValidPoint(x, y):
-                obj = self.parent.maskArray[y, x]
+            if self.isValidPoint(x_int, y_int):
+                obj = self.parent.maskArray[y_int, x_int]
                 if obj != 0:
                     self.drawBoundingBox(obj)
                     self.parent.highlightObjectAtPoint(point)
+
+    def updateBrushPreview(self, x, y):
+        """Update the brush preview position and size"""
+        # Remove existing preview if any
+        self.removeBrushPreview()
+
+        if not self.isValidPoint(int(x), int(y)):
+            return
+
+        brush_size = self.parent.currentBrushSize
+
+        # Create a new preview ellipse
+        radius = brush_size / 2
+
+        # Create the ellipse centered exactly at the floating point coordinates
+        preview_rect = QRectF(x - radius, y - radius, brush_size, brush_size)
+        self.brushPreview = QGraphicsEllipseItem(preview_rect)
+
+        # Set the pen style based on the draw mode
+        pen = QPen(
+            (
+                QColor(255, 0, 0)
+                if self.drawMode in ["draw", "new"]
+                else QColor(255, 255, 255)
+            ),
+        )
+        pen.setWidth(0.5)  # Set a thinner pen width
+        pen.setStyle(Qt.DashLine if self.drawMode == "erase" else Qt.SolidLine)
+        self.brushPreview.setPen(pen)
+
+        # Add to view
+        self.view.addItem(self.brushPreview)
+
+    def removeBrushPreview(self):
+        """Remove the brush preview if it exists"""
+        if self.brushPreview is not None:
+            self.view.removeItem(self.brushPreview)
+            self.brushPreview = None
 
     def mousePressEvent(self, event):
         """Handle mouse press"""
@@ -95,6 +173,9 @@ class CustomGraphicsView(ImageView):
         x, y = int(point.x()), int(point.y())
 
         if self.editMode and event.button() == Qt.LeftButton:
+            # Temporarily remove the preview while drawing
+            # self.removeBrushPreview()
+
             if self.isValidPoint(x, y):
                 self.parent.undoStack.append(self.parent.maskArray.copy())
                 self.lastPoint = (x, y)
@@ -124,6 +205,15 @@ class CustomGraphicsView(ImageView):
         if self.editMode and event.button() == Qt.LeftButton:
             self.lastPoint = None
             self.parent.changeMask()
+
+            # Restore the preview after drawing
+            point = self.getView().mapSceneToView(event.pos())
+            x, y = point.x(), point.y()
+            self.updateBrushPreview(x, y)
+
+            # Ensure the parent widget gets focus back after drawing
+            self.parent.setFocus()
+
             event.accept()
         else:
             super().mouseReleaseEvent(event)
@@ -131,7 +221,13 @@ class CustomGraphicsView(ImageView):
     def setEditMode(self, enabled):
         self.editMode = enabled
         self.view.editMode = enabled
-        self.updateCursor()
+
+        # Remove brush preview when exiting edit mode
+        if not enabled:
+            self.removeBrushPreview()
+
+        # Use standard cursor, preview will show the brush area
+        self.view.setCursor(Qt.CrossCursor if enabled else Qt.ArrowCursor)
 
     def drawBoundingBox(self, obj_id):
         if self.boundingBox:
@@ -153,7 +249,8 @@ class CustomGraphicsView(ImageView):
 
     def isValidPoint(self, x, y):
         return (
-            0 <= x < self.parent.maskArray.shape[1]
+            hasattr(self.parent, "maskArray")
+            and 0 <= x < self.parent.maskArray.shape[1]
             and 0 <= y < self.parent.maskArray.shape[0]
         )
 
@@ -161,35 +258,18 @@ class CustomGraphicsView(ImageView):
         self.drawMode = mode
 
     def updateCursor(self):
-        """Create a circular cursor based on brush size"""
+        """Use a simpler cursor since we have the preview ellipse"""
         if not self.editMode:
             self.view.setCursor(Qt.ArrowCursor)
-            return
+            self.removeBrushPreview()
+        else:
+            self.view.setCursor(Qt.CrossCursor)
 
-        # Scale up the cursor size (multiply by 5 to make it appear larger)
-        display_size = self.parent.currentBrushSize * 5
-
-        # Create a larger pixmap for better visibility
-        pixmap = QPixmap(display_size, display_size)
-        pixmap.fill(Qt.transparent)
-
-        painter = QPainter(pixmap)
-        # Enable antialiasing for smoother circle
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        # Draw outer circle (black)
-        painter.setPen(QPen(Qt.black, 2))
-        painter.drawEllipse(1, 1, display_size - 2, display_size - 2)
-
-        # Draw inner circle (white) for better visibility
-        painter.setPen(QPen(Qt.white, 1))
-        painter.drawEllipse(2, 2, display_size - 4, display_size - 4)
-
-        painter.end()
-
-        # Set the cursor hot spot to the center of the circle
-        cursor = QCursor(pixmap, display_size // 2, display_size // 2)
-        self.view.setCursor(cursor)
+            # If mouse is over the view, update the preview with new size
+            pos = self.mapFromGlobal(QCursor.pos())
+            if self.rect().contains(pos):
+                point = self.view_box.mapSceneToView(self.getView().mapToScene(pos))
+                self.updateBrushPreview(point.x(), point.y())
 
     def drawPoint(self, x, y):
         current_object = self.parent.objects[self.parent.currentObjectIndex]

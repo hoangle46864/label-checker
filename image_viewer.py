@@ -5,7 +5,15 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QFont, QImage, QKeySequence, QPixmap, QTextCursor
+from PyQt5.QtGui import (
+    QColor,
+    QCursor,
+    QFont,
+    QImage,
+    QKeySequence,
+    QPixmap,
+    QTextCursor,
+)
 from PyQt5.QtWidgets import (
     QAction,
     QApplication,
@@ -251,6 +259,18 @@ class ImageViewer(QWidget):
         markNoAction.triggered.connect(self.createShortcutDialog)
         addShortcutsMenu.addAction(markNoAction)
 
+        # Add Ctrl+Z shortcut for undo edit function
+        self.undoShortcut = QShortcut(QKeySequence("Ctrl+Z"), self)
+        self.undoShortcut.activated.connect(self.handleUndoShortcut)
+
+        # Create the "Help" menu
+        helpMenu = menubar.addMenu("Help")
+
+        # Create the "Keyboard Shortcuts" action
+        keyboardShortcutsAction = QAction("Keyboard Shortcuts", self)
+        keyboardShortcutsAction.triggered.connect(self.showKeyboardShortcuts)
+        helpMenu.addAction(keyboardShortcutsAction)
+
         self.show()
 
         self.imagePath = ""
@@ -313,8 +333,25 @@ class ImageViewer(QWidget):
             self.markObjectYes()
         elif event.key() == Qt.Key_O:
             self.markObjectNo()
-        elif event.key() == Qt.Key_H:
+        elif event.key() == Qt.Key_H or event.key() == Qt.Key_S:
             self.toggleMask()
+        elif event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
+            if self.editMode:
+                self.adjustBrushSize(1)
+        elif event.key() == Qt.Key_Minus:
+            if self.editMode:
+                self.adjustBrushSize(-1)
+        elif event.key() == Qt.Key_1:
+            if self.editMode:
+                self.setDrawMode("draw")
+        elif event.key() == Qt.Key_2:
+            if self.editMode:
+                self.setDrawMode("erase")
+        elif event.key() == Qt.Key_3:
+            if self.editMode:
+                self.setDrawMode("new")
+        elif event.key() == Qt.Key_T:
+            self.toggleEditMode()
         else:
             super().keyPressEvent(event)
 
@@ -774,9 +811,10 @@ class ImageViewer(QWidget):
         self.imageView.addItem(self.singleMaskItem)
         self.maskVisible = True
 
-        # Scale to the object
-        maskClone = np.where(self.maskArray == current_object, current_object, 0)
-        self.scaleToObject(maskClone)
+        # Scale to the object if not in edit mode
+        if not self.editMode:
+            maskClone = np.where(self.maskArray == current_object, current_object, 0)
+            self.scaleToObject(maskClone)
 
     def previousObject(self):
         if self.currentObjectIndex > 0:
@@ -1056,6 +1094,7 @@ class ImageViewer(QWidget):
             self.imageView.setDrawMode("draw")
         elif mode == "erase":
             self.btnDraw.setChecked(False)
+            self.btnErase.setChecked(True)
             self.btnNewObject.setChecked(False)
             self.imageView.setDrawMode("erase")
         else:  # new object mode
@@ -1112,3 +1151,72 @@ class ImageViewer(QWidget):
         # Select the new object
         self.objectList.setCurrentRow(len(self.objects) - 1)
         self.currentObjectIndex = len(self.objects) - 1
+
+    def handleUndoShortcut(self):
+        """Handle Ctrl+Z shortcut, only works in edit mode"""
+        if self.editMode:
+            self.undoLastEdit()
+
+    def adjustBrushSize(self, delta):
+        """Adjust brush size by delta amount"""
+        newSize = max(1, min(50, self.currentBrushSize + delta))
+        if newSize != self.currentBrushSize:
+            self.currentBrushSize = newSize
+            self.imageView.updateCursor()
+
+            # Update the preview if mouse is over the image
+            # This forces the brush preview to update with the new size
+            pos = self.imageView.mapFromGlobal(QCursor.pos())
+            if self.imageView.rect().contains(pos):
+                point = self.imageView.view_box.mapSceneToView(
+                    self.imageView.getView().mapToScene(pos),
+                )
+                self.imageView.updateBrushPreview(point.x(), point.y())
+
+    def showKeyboardShortcuts(self):
+        """Show dialog with keyboard shortcut information"""
+        shortcutsText = """
+        <h2>Keyboard Shortcuts</h2>
+
+        <h3>Navigation Shortcuts</h3>
+        <table border="0" cellspacing="5">
+        <tr><td><b>D</b></td><td>Next object</td></tr>
+        <tr><td><b>A</b></td><td>Previous object</td></tr>
+        <tr><td><b>I</b></td><td>Mark object as "Yes"</td></tr>
+        <tr><td><b>O</b></td><td>Mark object as "No"</td></tr>
+        <tr><td><b>H or S</b></td><td>Toggle mask visibility (show/hide)</td></tr>
+        <tr><td><b>T</b></td><td>Toggle edit mode on/off</td></tr>
+        </table>
+
+        <h3>Edit Mode Shortcuts</h3>
+        <table border="0" cellspacing="5">
+        <tr><td><b>1</b></td><td>Draw mode</td></tr>
+        <tr><td><b>2</b></td><td>Erase mode</td></tr>
+        <tr><td><b>3</b></td><td>New object mode</td></tr>
+        <tr><td><b>+ / -</b></td><td>Increase/decrease brush size</td></tr>
+        <tr><td><b>Ctrl+Z</b></td><td>Undo last edit</td></tr>
+        </table>
+        """
+
+        # Create a dialog with the keyboard shortcuts
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Keyboard Shortcuts")
+        dialog.setMinimumWidth(500)
+        dialog.setMinimumHeight(400)
+
+        layout = QVBoxLayout()
+
+        # Add a text browser to show the shortcuts with HTML formatting
+        textBrowser = QTextEdit()
+        textBrowser.setReadOnly(True)
+        textBrowser.setHtml(shortcutsText)
+
+        layout.addWidget(textBrowser)
+
+        # Add OK button
+        buttonBox = QDialogButtonBox(QDialogButtonBox.Ok)
+        buttonBox.accepted.connect(dialog.accept)
+        layout.addWidget(buttonBox)
+
+        dialog.setLayout(layout)
+        dialog.exec_()
